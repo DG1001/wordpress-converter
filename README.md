@@ -6,10 +6,13 @@ Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollst
 
 - 🌐 **Vollständige Website-Erfassung**: Alle öffentlichen Seiten, Posts und Kategorien
 - 📱 **Asset-Download**: Automatisches Herunterladen von Bildern, CSS, JavaScript und Fonts
-- 🔗 **Link-Rewriting**: Konvertierung interner URLs für lokale Navigation
+- 🔗 **Intelligente Pfad-Konvertierung**: Korrekte relative Pfade für alle Seitenebenen
+- 🚫 **Cookie-Banner Entfernung**: Automatische Erkennung und Entfernung von Cookie-Bannern
 - 📊 **Live-Fortschritt**: Echtzeit-Updates während des Scraping-Prozesses
+- 📁 **File-Browser**: Navigation durch die komplette Website-Struktur
 - 📦 **ZIP-Export**: Download der kompletten statischen Website
 - 🎨 **Responsive Design**: Moderne UI mit TailwindCSS
+- ⚡ **Konflikt-Vermeidung**: Intelligente Behandlung von Pfad-Konflikten zwischen Seiten und Assets
 
 ## Installation
 
@@ -70,7 +73,12 @@ Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollst
 - Erhaltung der ursprünglichen Ordnerstruktur
 
 ### 3. HTML-Processing
-- Konvertierung interner Links zu relativen Pfaden
+- **Intelligente Pfad-Konvertierung**: Korrekte relative Pfade basierend auf Seitentiefe
+  - Root-Seiten: `./wp-content/uploads/image.jpg`
+  - Unterseiten: `../wp-content/uploads/image.jpg`
+  - Tiefe Seiten: `../../wp-content/uploads/image.jpg`
+- **Cookie-Banner Entfernung**: Automatische Erkennung und Entfernung häufiger Cookie-Banner
+- **Asset-Validierung**: Unterscheidung zwischen Seiten und Assets zur Konflikt-Vermeidung
 - Deaktivierung von Kontaktformularen
 - Erhaltung der ursprünglichen Struktur und Formatierung
 
@@ -103,9 +111,33 @@ scraped_sites/
 1. Benutzer öffnet `http://localhost:5000`
 2. Gibt WordPress-URL ein: `https://demo-wordpress-site.com`
 3. Klickt "Scraping starten"
-4. Sieht Live-Fortschritt der Erfassung
-5. Nach Abschluss: Datei-Browser mit allen erfassten Inhalten
-6. Lädt ZIP der kompletten statischen Site herunter
+4. Sieht Live-Fortschritt der Erfassung mit detaillierten Logs
+5. Nach Abschluss: Ergebnis-Seite mit Statistiken
+6. **Browse Files**: Navigation durch die Website-Struktur im Browser
+7. **ZIP Download**: Download der kompletten statischen Site
+8. **Qualitätskontrolle**: Testen der Seiten vor dem finalen Deployment
+
+## Kürzliche Verbesserungen (v2.0)
+
+### ✅ Pfad-Korrekturen
+- **Problem behoben**: Assets hatten falsche relative Pfade auf Unterseiten
+- **Lösung**: Intelligente Tiefenberechnung für korrekte `../` Pfade
+- **Ergebnis**: Logos, CSS und Bilder laden nun korrekt auf allen Seiten
+
+### ✅ Konflik-Resolution
+- **Problem behoben**: "Pfad-Konflikt erkannt" Meldungen eliminiert
+- **Lösung**: Bessere Unterscheidung zwischen Seiten und Assets
+- **Ergebnis**: Sauberes Scraping ohne Pfad-Kollisionen
+
+### ✅ UI-Verbesserungen
+- **Entfernt**: Defekte Preview-Buttons die nicht funktioniert haben
+- **Verbessert**: File-Browser als zentrale Navigation
+- **Ergebnis**: Intuitivere Benutzerführung mit funktionierender Navigation
+
+### ✅ Cookie-Banner Entfernung
+- **Neu**: Automatische Erkennung deutscher und englischer Cookie-Banner
+- **Umfang**: 20+ häufige Cookie-Plugin Patterns unterstützt
+- **Ergebnis**: Saubere statische Sites ohne störende Banner
 
 ## Troubleshooting
 
