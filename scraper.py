@@ -16,6 +16,7 @@ class WordPressScraper:
         self.visited_urls = set()
         self.discovered_urls = set()
         self.assets = set()
+        self.scraped_pages = set()  # Track URLs that are actual pages to avoid asset conflicts
         self.domain = urlparse(base_url).netloc
         
         # Create necessary directories
@@ -162,6 +163,9 @@ class WordPressScraper:
             # Get page content
             content = page.content()
             
+            # Mark this URL as a scraped page to avoid asset conflicts
+            self.mark_as_page(url)
+            
             # Process HTML and extract assets
             soup = BeautifulSoup(content, 'html.parser')
             self.process_html_assets(soup, url)
@@ -174,6 +178,12 @@ class WordPressScraper:
         except Exception as e:
             self.log(f"Fehler beim Scraping von {url}: {e}")
     
+    def mark_as_page(self, url):
+        """Mark a URL as a scraped page to avoid treating it as an asset"""
+        if not hasattr(self, 'scraped_pages'):
+            self.scraped_pages = set()
+        self.scraped_pages.add(url)
+    
     def process_html_assets(self, soup, page_url):
         # Remove cookie banners first
         self.remove_cookie_banners(soup)
@@ -182,25 +192,25 @@ class WordPressScraper:
         for img in soup.find_all('img', src=True):
             src = img['src']
             absolute_url = urljoin(page_url, src)
-            if self.is_same_domain(absolute_url):
+            if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                 self.assets.add(absolute_url)
-                img['src'] = self.convert_to_relative_path(absolute_url)
+                img['src'] = self.convert_to_relative_path(absolute_url, page_url)
         
         # Process all link elements (CSS, favicon, preload, etc.)
         for link in soup.find_all('link', href=True):
             href = link['href']
             absolute_url = urljoin(page_url, href)
-            if self.is_same_domain(absolute_url):
+            if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                 self.assets.add(absolute_url)
-                link['href'] = self.convert_to_relative_path(absolute_url)
+                link['href'] = self.convert_to_relative_path(absolute_url, page_url)
         
         # Process JavaScript
         for script in soup.find_all('script', src=True):
             src = script['src']
             absolute_url = urljoin(page_url, src)
-            if self.is_same_domain(absolute_url):
+            if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                 self.assets.add(absolute_url)
-                script['src'] = self.convert_to_relative_path(absolute_url)
+                script['src'] = self.convert_to_relative_path(absolute_url, page_url)
         
         # Process internal links
         for a in soup.find_all('a', href=True):
@@ -209,24 +219,24 @@ class WordPressScraper:
                 absolute_url = urljoin(page_url, href)
                 if self.is_same_domain(absolute_url):
                     # Convert to relative path
-                    relative_path = self.convert_to_relative_path(absolute_url)
+                    relative_path = self.convert_to_relative_path(absolute_url, page_url)
                     a['href'] = relative_path
         
         # Process other elements with src attributes (video, audio, iframe, etc.)
         for element in soup.find_all(['video', 'audio', 'source', 'track'], src=True):
             src = element['src']
             absolute_url = urljoin(page_url, src)
-            if self.is_same_domain(absolute_url):
+            if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                 self.assets.add(absolute_url)
-                element['src'] = self.convert_to_relative_path(absolute_url)
+                element['src'] = self.convert_to_relative_path(absolute_url, page_url)
         
         # Process elements with poster attributes (video)
         for element in soup.find_all(['video'], poster=True):
             poster = element['poster']
             absolute_url = urljoin(page_url, poster)
-            if self.is_same_domain(absolute_url):
+            if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                 self.assets.add(absolute_url)
-                element['poster'] = self.convert_to_relative_path(absolute_url)
+                element['poster'] = self.convert_to_relative_path(absolute_url, page_url)
         
         # Disable forms
         for form in soup.find_all('form'):
@@ -339,18 +349,40 @@ class WordPressScraper:
         # Short text with both cookie terms and actions is likely a banner
         return has_cookie_term and has_action and (is_positioned or len(text) < 1000)
     
-    def convert_to_relative_path(self, url):
-        parsed = urlparse(url)
-        path = parsed.path
+    def convert_to_relative_path(self, target_url, current_page_url):
+        """Convert absolute URL to relative path from current page location"""
+        target_parsed = urlparse(target_url)
+        current_parsed = urlparse(current_page_url)
         
-        if not path or path == '/':
-            return './index.html'
+        target_path = target_parsed.path
+        current_path = current_parsed.path
         
-        if path.endswith('/'):
-            return '.' + path + 'index.html'
+        # Determine the directory depth of the current page
+        if not current_path or current_path == '/':
+            # Root page (index.html)
+            current_dir = ''
+            depth = 0
+        elif current_path.endswith('/'):
+            # Directory with trailing slash
+            current_dir = current_path.strip('/')
+            depth = len(current_dir.split('/')) if current_dir else 0
+        else:
+            # Page without trailing slash - treat as directory
+            current_dir = current_path.strip('/')
+            depth = len(current_dir.split('/')) if current_dir else 0
+        
+        # Build relative prefix based on depth
+        relative_prefix = '../' * depth if depth > 0 else './'
+        
+        # Handle target path
+        if not target_path or target_path == '/':
+            return relative_prefix + 'index.html'
+        
+        if target_path.endswith('/'):
+            return relative_prefix + target_path.strip('/') + '/index.html'
         
         # Check if it's an asset (has file extension)
-        if any(path.lower().endswith(ext) for ext in [
+        if any(target_path.lower().endswith(ext) for ext in [
             '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',  # Images
             '.css', '.js',  # Stylesheets and scripts
             '.pdf', '.zip', '.doc', '.docx',  # Documents
@@ -358,13 +390,13 @@ class WordPressScraper:
             '.mp4', '.avi', '.mov', '.mp3', '.wav',  # Media
             '.xml', '.json', '.txt'  # Data files
         ]):
-            return '.' + path
+            return relative_prefix + target_path.strip('/')
         
         # Regular page - treat as directory with index.html
-        if path.endswith('.html') or path.endswith('.htm'):
-            return '.' + path
+        if target_path.endswith('.html') or target_path.endswith('.htm'):
+            return relative_prefix + target_path.strip('/')
         else:
-            return '.' + path + '/index.html'
+            return relative_prefix + target_path.strip('/') + '/index.html'
     
     def save_html_file(self, url, content):
         parsed = urlparse(url)
@@ -401,7 +433,9 @@ class WordPressScraper:
             f.write(content)
     
     def download_assets(self):
-        for asset_url in self.assets:
+        # Convert to list to avoid "set changed size during iteration" error
+        assets_to_download = list(self.assets)
+        for asset_url in assets_to_download:
             try:
                 self.download_asset(asset_url)
             except Exception as e:
@@ -423,7 +457,7 @@ class WordPressScraper:
             
             # Check if the target path already exists as a directory
             if os.path.isdir(file_path):
-                # If it's a directory, save the asset with a different name
+                # This happens when a URL exists both as a page and referenced as an asset
                 base_name = os.path.basename(asset_path)
                 if '.' in base_name:
                     name, ext = os.path.splitext(base_name)
@@ -431,7 +465,7 @@ class WordPressScraper:
                 else:
                     new_name = f"{base_name}_asset"
                 file_path = os.path.join(dir_path, new_name)
-                self.log(f"Pfad-Konflikt erkannt, speichere Asset als: {new_name}")
+                self.log(f"⚠️  Pfad-Konflikt: '{asset_path}' existiert als Seite und Asset - Asset gespeichert als '{new_name}'")
             
             # Ensure parent directory exists
             if dir_path:
@@ -463,25 +497,25 @@ class WordPressScraper:
             # Find and replace url() references
             import re
             url_pattern = r'url\(["\']?([^"\')\s]+)["\']?\)'
+            new_assets = set()
             
             def replace_url(match):
                 url = match.group(1)
                 if not url.startswith(('http://', 'https://', 'data:', '//')):
                     # Resolve relative URL in CSS context
                     absolute_url = urljoin(css_url, url)
-                    if self.is_same_domain(absolute_url):
-                        # Add to assets for download
-                        self.assets.add(absolute_url)
+                    if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
+                        # Collect new assets instead of adding directly to avoid iterator issues
+                        new_assets.add(absolute_url)
                         # Convert to relative path from CSS file location
-                        css_dir = os.path.dirname(css_url)
-                        relative_to_css = os.path.relpath(
-                            self.convert_to_relative_path(absolute_url).lstrip('./'),
-                            os.path.dirname(urlparse(css_url).path).strip('/')
-                        )
+                        relative_to_css = self.convert_to_relative_path(absolute_url, css_url).lstrip('./')
                         return f'url({relative_to_css})'
                 return match.group(0)
             
             modified_content = re.sub(url_pattern, replace_url, content)
+            
+            # Add new assets after processing
+            self.assets.update(new_assets)
             
             # Write back if changed
             if modified_content != content:
@@ -490,6 +524,48 @@ class WordPressScraper:
                     
         except Exception as e:
             self.log(f"Fehler beim Verarbeiten der CSS-Datei {file_path}: {e}")
+    
+    def is_valid_asset(self, url):
+        """Check if URL is a valid asset to download"""
+        # Check if this URL is already a scraped page
+        if hasattr(self, 'scraped_pages') and url in self.scraped_pages:
+            return False
+        
+        # Check if this URL is in our discovered URLs (pages to scrape)
+        if url in self.discovered_urls:
+            return False
+        
+        # Filter out WordPress API calls and other non-asset URLs
+        invalid_paths = [
+            '/wp-json/',
+            '/wp-admin/',
+            '?',  # Query parameters usually indicate dynamic content
+            '/feed/',
+            '/xmlrpc.php',
+            '/wp-login.php'
+        ]
+        
+        # Check if it has a clear asset extension
+        asset_extensions = [
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',  # Images
+            '.css', '.js',  # Stylesheets and scripts
+            '.pdf', '.zip', '.doc', '.docx',  # Documents
+            '.woff', '.woff2', '.ttf', '.eot',  # Fonts
+            '.mp4', '.avi', '.mov', '.mp3', '.wav',  # Media
+            '.xml', '.json', '.txt'  # Data files (but not if they're API endpoints)
+        ]
+        
+        # If it has a clear asset extension, it's likely an asset
+        parsed_url = urlparse(url)
+        path = parsed_url.path.lower()
+        has_asset_extension = any(path.endswith(ext) for ext in asset_extensions)
+        
+        # If it has an asset extension and no invalid paths, it's valid
+        if has_asset_extension:
+            return not any(invalid_path in url for invalid_path in invalid_paths)
+        
+        # If no extension, it's probably a page, not an asset
+        return False
     
     def is_same_domain(self, url):
         try:
