@@ -12,6 +12,7 @@ __pycache__/
 # Environment variables
 .env.local
 .env.production
+.env
 
 # IDE files (keep .vscode for project settings)
 .idea/
