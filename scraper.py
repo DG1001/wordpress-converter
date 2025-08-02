@@ -186,14 +186,13 @@ class WordPressScraper:
                 self.assets.add(absolute_url)
                 img['src'] = self.convert_to_relative_path(absolute_url)
         
-        # Process CSS links
+        # Process all link elements (CSS, favicon, preload, etc.)
         for link in soup.find_all('link', href=True):
-            if link.get('rel') and 'stylesheet' in link.get('rel'):
-                href = link['href']
-                absolute_url = urljoin(page_url, href)
-                if self.is_same_domain(absolute_url):
-                    self.assets.add(absolute_url)
-                    link['href'] = self.convert_to_relative_path(absolute_url)
+            href = link['href']
+            absolute_url = urljoin(page_url, href)
+            if self.is_same_domain(absolute_url):
+                self.assets.add(absolute_url)
+                link['href'] = self.convert_to_relative_path(absolute_url)
         
         # Process JavaScript
         for script in soup.find_all('script', src=True):
@@ -209,7 +208,25 @@ class WordPressScraper:
             if not href.startswith(('#', 'mailto:', 'tel:', 'javascript:')):
                 absolute_url = urljoin(page_url, href)
                 if self.is_same_domain(absolute_url):
-                    a['href'] = self.convert_to_relative_path(absolute_url)
+                    # Convert to relative path
+                    relative_path = self.convert_to_relative_path(absolute_url)
+                    a['href'] = relative_path
+        
+        # Process other elements with src attributes (video, audio, iframe, etc.)
+        for element in soup.find_all(['video', 'audio', 'source', 'track'], src=True):
+            src = element['src']
+            absolute_url = urljoin(page_url, src)
+            if self.is_same_domain(absolute_url):
+                self.assets.add(absolute_url)
+                element['src'] = self.convert_to_relative_path(absolute_url)
+        
+        # Process elements with poster attributes (video)
+        for element in soup.find_all(['video'], poster=True):
+            poster = element['poster']
+            absolute_url = urljoin(page_url, poster)
+            if self.is_same_domain(absolute_url):
+                self.assets.add(absolute_url)
+                element['poster'] = self.convert_to_relative_path(absolute_url)
         
         # Disable forms
         for form in soup.find_all('form'):
@@ -332,12 +349,22 @@ class WordPressScraper:
         if path.endswith('/'):
             return '.' + path + 'index.html'
         
-        # Check if it's an asset
-        if any(path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.css', '.js', '.svg', '.ico', '.pdf', '.woff', '.woff2', '.ttf']):
+        # Check if it's an asset (has file extension)
+        if any(path.lower().endswith(ext) for ext in [
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',  # Images
+            '.css', '.js',  # Stylesheets and scripts
+            '.pdf', '.zip', '.doc', '.docx',  # Documents
+            '.woff', '.woff2', '.ttf', '.eot',  # Fonts
+            '.mp4', '.avi', '.mov', '.mp3', '.wav',  # Media
+            '.xml', '.json', '.txt'  # Data files
+        ]):
             return '.' + path
         
-        # Regular page
-        return '.' + path + ('/index.html' if not path.endswith('.html') else '')
+        # Regular page - treat as directory with index.html
+        if path.endswith('.html') or path.endswith('.htm'):
+            return '.' + path
+        else:
+            return '.' + path + '/index.html'
     
     def save_html_file(self, url, content):
         parsed = urlparse(url)
@@ -415,12 +442,54 @@ class WordPressScraper:
                 self.log(f"Kann Asset nicht speichern, Pfad ist Verzeichnis: {asset_path}")
                 return
             
+            # Download and save the file
             with open(file_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
+            
+            # Process CSS files to fix internal references
+            if file_path.lower().endswith('.css'):
+                self.process_css_file(file_path, url)
                     
         except Exception as e:
             self.log(f"Download fehlgeschlagen für {url}: {e}")
+    
+    def process_css_file(self, file_path, css_url):
+        """Process CSS files to fix internal references"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Find and replace url() references
+            import re
+            url_pattern = r'url\(["\']?([^"\')\s]+)["\']?\)'
+            
+            def replace_url(match):
+                url = match.group(1)
+                if not url.startswith(('http://', 'https://', 'data:', '//')):
+                    # Resolve relative URL in CSS context
+                    absolute_url = urljoin(css_url, url)
+                    if self.is_same_domain(absolute_url):
+                        # Add to assets for download
+                        self.assets.add(absolute_url)
+                        # Convert to relative path from CSS file location
+                        css_dir = os.path.dirname(css_url)
+                        relative_to_css = os.path.relpath(
+                            self.convert_to_relative_path(absolute_url).lstrip('./'),
+                            os.path.dirname(urlparse(css_url).path).strip('/')
+                        )
+                        return f'url({relative_to_css})'
+                return match.group(0)
+            
+            modified_content = re.sub(url_pattern, replace_url, content)
+            
+            # Write back if changed
+            if modified_content != content:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(modified_content)
+                    
+        except Exception as e:
+            self.log(f"Fehler beim Verarbeiten der CSS-Datei {file_path}: {e}")
     
     def is_same_domain(self, url):
         try:

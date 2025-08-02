@@ -310,4 +310,4 @@ if __name__ == '__main__':
     # Create scraped_sites directory
     os.makedirs('scraped_sites', exist_ok=True)
     
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
