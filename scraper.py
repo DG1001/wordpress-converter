@@ -199,6 +199,31 @@ class WordPressScraper:
                 self.assets.add(absolute_url)
                 img['src'] = self.convert_to_relative_path(absolute_url, page_url)
         
+        # Process images with srcset (responsive images)
+        for img in soup.find_all('img', srcset=True):
+            srcset = img['srcset']
+            # Parse srcset: "url1 size1, url2 size2, ..."
+            srcset_urls = []
+            for srcset_item in srcset.split(','):
+                srcset_item = srcset_item.strip()
+                if srcset_item:
+                    # Split by space to get URL (first part)
+                    url_part = srcset_item.split()[0] if srcset_item.split() else srcset_item
+                    absolute_url = urljoin(page_url, url_part)
+                    if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
+                        self.assets.add(absolute_url)
+                        # Convert to relative path for srcset
+                        relative_url = self.convert_to_relative_path(absolute_url, page_url)
+                        # Rebuild srcset item with relative URL
+                        size_parts = srcset_item.split()[1:] if len(srcset_item.split()) > 1 else []
+                        if size_parts:
+                            srcset_urls.append(f"{relative_url} {' '.join(size_parts)}")
+                        else:
+                            srcset_urls.append(relative_url)
+            
+            if srcset_urls:
+                img['srcset'] = ', '.join(srcset_urls)
+        
         # Process all link elements (CSS, favicon, preload, etc.)
         for link in soup.find_all('link', href=True):
             href = link['href']
@@ -252,23 +277,19 @@ class WordPressScraper:
         """Remove common cookie banner elements from the HTML"""
         removed_count = 0
         
-        # Remove Cookiebot scripts and elements first (specific to kirsten-controls.de issue)
+        # Remove Cookiebot scripts specifically
         cookiebot_scripts = soup.find_all('script', src=lambda x: x and 'cookiebot.com' in x)
         for script in cookiebot_scripts:
             script.decompose()
             removed_count += 1
             
-        # Remove other cookie-related scripts (both external and inline)
-        cookie_scripts = soup.find_all('script', src=lambda x: x and any(term in x.lower() for term in ['cookie', 'consent', 'gdpr']))
-        for script in cookie_scripts:
-            script.decompose()
-            removed_count += 1
-            
-        # Remove inline scripts that mention cookies/consent
+        # Remove inline scripts that are clearly cookie-related (be more specific)
         inline_scripts = soup.find_all('script', src=False)
         for script in inline_scripts:
             script_content = script.get_text().lower()
-            if any(term in script_content for term in ['cookiebot', 'cookie-consent', 'gdpr', 'cookie-banner', 'cookieconsent']):
+            # Only remove if it's clearly a cookie banner script, not general scripts that mention cookies
+            if any(term in script_content for term in ['cookiebot', 'CookieConsent', 'cc.js', 'cookie-banner']) and \
+               len(script_content) < 5000:  # Avoid removing large scripts
                 script.decompose()
                 removed_count += 1
         
@@ -377,7 +398,7 @@ class WordPressScraper:
         return has_cookie_term and has_action and (is_positioned or len(text) < 1000)
     
     def replace_domain_references(self, soup, current_page_url):
-        """Replace hard-coded domain references with local file paths"""
+        """Replace hard-coded domain references ONLY for non-asset content like API calls and external scripts"""
         import re
         
         # Get the domain from the base URL
@@ -390,132 +411,73 @@ class WordPressScraper:
         
         removed_count = 0
         
-        # Process all text nodes and attributes that might contain URLs
-        for element in soup.find_all(string=True):
-            parent = element.parent
-            if parent and parent.name not in ['script', 'style']:  # Skip script and style tags
-                original_text = str(element)
-                modified_text = original_text
-                
-                for domain_variant in domain_variants:
-                    # Replace absolute URLs
-                    https_pattern = f"https://{domain_variant}"
-                    http_pattern = f"http://{domain_variant}"
-                    protocol_relative_pattern = f"//{domain_variant}"
-                    
-                    if https_pattern in modified_text:
-                        modified_text = modified_text.replace(https_pattern, "")
-                        removed_count += 1
-                    if http_pattern in modified_text:
-                        modified_text = modified_text.replace(http_pattern, "")
-                        removed_count += 1
-                    if protocol_relative_pattern in modified_text:
-                        modified_text = modified_text.replace(protocol_relative_pattern, "")
-                        removed_count += 1
-                
-                if modified_text != original_text:
-                    element.replace_with(modified_text)
+        # Only remove domain references that are NOT assets and NOT scraped pages
+        # Be very conservative - only remove API calls, admin URLs, and similar non-content
+        non_asset_patterns = [
+            '/wp-json/',
+            '/wp-admin/',
+            '/wp-login.php',
+            '/xmlrpc.php',
+            '/feed/',
+            'admin-ajax.php'
+        ]
         
-        # Process style elements (inline CSS)
-        style_elements = soup.find_all('style')
-        for style_element in style_elements:
-            style_content = style_element.get_text()
-            if style_content:
-                original_style = style_content
-                modified_style = style_content
-                
-                for domain_variant in domain_variants:
-                    # Replace absolute URLs in CSS
-                    https_pattern = f"https://{domain_variant}"
-                    http_pattern = f"http://{domain_variant}"
-                    protocol_relative_pattern = f"//{domain_variant}"
-                    
-                    # For CSS, we need to be more careful to maintain proper paths
-                    if https_pattern in modified_style:
-                        # Replace with relative paths for local assets
-                        import re
-                        url_pattern = rf'url\(["\']?{re.escape(https_pattern)}([^"\')\s]*)["\']?\)'
-                        def replace_css_url(match):
-                            path = match.group(1)
-                            return f'url({path})'
-                        modified_style = re.sub(url_pattern, replace_css_url, modified_style)
-                        removed_count += 1
-                    
-                    if http_pattern in modified_style:
-                        url_pattern = rf'url\(["\']?{re.escape(http_pattern)}([^"\')\s]*)["\']?\)'
-                        def replace_css_url(match):
-                            path = match.group(1)
-                            return f'url({path})'
-                        modified_style = re.sub(url_pattern, replace_css_url, modified_style)
-                        removed_count += 1
-                
-                if modified_style != original_style:
-                    style_element.string = modified_style
-
-        # Process srcset attributes (responsive images) - special handling
-        srcset_elements = soup.find_all(attrs={'srcset': True})
-        for element in srcset_elements:
-            srcset_value = element.get('srcset', '')
-            if srcset_value:
-                original_srcset = srcset_value
-                modified_srcset = srcset_value
+        # Process script elements that contain API calls or admin references
+        script_elements = soup.find_all('script')
+        for script in script_elements:
+            script_content = script.get_text()
+            if script_content:
+                original_content = script_content
+                modified_content = script_content
                 
                 for domain_variant in domain_variants:
                     https_pattern = f"https://{domain_variant}"
                     http_pattern = f"http://{domain_variant}"
                     
-                    # Replace in srcset (format: "url size, url size, ...")
-                    if https_pattern in modified_srcset:
-                        modified_srcset = modified_srcset.replace(https_pattern, "")
-                        removed_count += 1
-                    if http_pattern in modified_srcset:
-                        modified_srcset = modified_srcset.replace(http_pattern, "")
-                        removed_count += 1
+                    # Only replace if it contains non-asset patterns
+                    if any(pattern in modified_content for pattern in non_asset_patterns):
+                        if https_pattern in modified_content:
+                            modified_content = modified_content.replace(https_pattern, "")
+                            removed_count += 1
+                        if http_pattern in modified_content:
+                            modified_content = modified_content.replace(http_pattern, "")
+                            removed_count += 1
                 
-                if modified_srcset != original_srcset:
-                    element['srcset'] = modified_srcset
-
-        # Process attributes that commonly contain URLs
-        url_attributes = ['src', 'href', 'action', 'data-src', 'data-href', 'content', 'style']
-        for attr in url_attributes:
-            elements_with_attr = soup.find_all(attrs={attr: True})
-            for element in elements_with_attr:
-                attr_value = element.get(attr, '')
-                if not attr_value:
-                    continue
-                    
-                original_value = attr_value
-                modified_value = attr_value
-                
+                if modified_content != original_content:
+                    script.string = modified_content
+        
+        # Process specific attributes but ONLY for non-asset URLs
+        for element in soup.find_all(['script', 'link', 'form'], src=True):
+            src_value = element.get('src', '')
+            if src_value and any(pattern in src_value for pattern in non_asset_patterns):
                 for domain_variant in domain_variants:
                     https_pattern = f"https://{domain_variant}"
                     http_pattern = f"http://{domain_variant}"
-                    protocol_relative_pattern = f"//{domain_variant}"
                     
-                    if https_pattern in modified_value:
-                        # Try to convert to relative path if it's a local resource
-                        if any(https_pattern + path in self.discovered_urls for path in ['', '/']):
-                            try:
-                                modified_value = self.convert_to_relative_path(modified_value, current_page_url)
-                            except:
-                                modified_value = modified_value.replace(https_pattern, "")
-                        else:
-                            modified_value = modified_value.replace(https_pattern, "")
+                    if https_pattern in src_value:
+                        element['src'] = src_value.replace(https_pattern, "")
                         removed_count += 1
-                        
-                    if http_pattern in modified_value:
-                        modified_value = modified_value.replace(http_pattern, "")
+                    elif http_pattern in src_value:
+                        element['src'] = src_value.replace(http_pattern, "")
                         removed_count += 1
-                        
-                    if protocol_relative_pattern in modified_value:
-                        modified_value = modified_value.replace(protocol_relative_pattern, "")
+        
+        # Process action attributes for forms (usually admin/API calls)
+        for form in soup.find_all('form', action=True):
+            action_value = form.get('action', '')
+            if action_value:
+                for domain_variant in domain_variants:
+                    https_pattern = f"https://{domain_variant}"
+                    http_pattern = f"http://{domain_variant}"
+                    
+                    if https_pattern in action_value:
+                        form['action'] = action_value.replace(https_pattern, "")
                         removed_count += 1
-                
-                if modified_value != original_value:
-                    element[attr] = modified_value
+                    elif http_pattern in action_value:
+                        form['action'] = action_value.replace(http_pattern, "")
+                        removed_count += 1
         
         if removed_count > 0:
-            self.log(f"Domain-Referenzen entfernt: {removed_count} Instanzen")
+            self.log(f"Domain-Referenzen entfernt: {removed_count} Instanzen (nur API/Admin-URLs)")
     
     def convert_to_relative_path(self, target_url, current_page_url):
         """Convert absolute URL to relative path from current page location"""
