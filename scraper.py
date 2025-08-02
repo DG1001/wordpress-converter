@@ -71,6 +71,10 @@ class WordPressScraper:
                 self.log("Lade Assets herunter...")
                 self.download_assets()
                 
+                # Post-process all HTML files to replace domain references with local paths
+                self.log("Verarbeite Domain-Referenzen...")
+                self.post_process_domain_references()
+                
                 self.update_progress({'completed_pages': len(self.visited_urls)})
                 self.log(f"Scraping abgeschlossen: {len(self.visited_urls)} Seiten gespeichert")
                 
@@ -170,10 +174,7 @@ class WordPressScraper:
             soup = BeautifulSoup(content, 'html.parser')
             self.process_html_assets(soup, url)
             
-            # Replace domain references with local paths
-            self.replace_domain_references(soup, url)
-            
-            # Save processed HTML
+            # Save processed HTML (domain references will be replaced later)
             self.save_html_file(url, str(soup))
             
             page.close()
@@ -478,6 +479,301 @@ class WordPressScraper:
         
         if removed_count > 0:
             self.log(f"Domain-Referenzen entfernt: {removed_count} Instanzen (nur API/Admin-URLs)")
+    
+    def post_process_domain_references(self):
+        """Post-process all HTML files to replace domain references with local asset paths"""
+        import os
+        import glob
+        from bs4 import BeautifulSoup
+        
+        # Get domain variants
+        domain = urlparse(self.base_url).netloc
+        domain_variants = [
+            domain,
+            f"www.{domain}",
+            domain.replace('www.', '') if domain.startswith('www.') else f"www.{domain}"
+        ]
+        
+        total_replacements = 0
+        
+        # Find all HTML files in the output directory
+        html_files = []
+        for root, dirs, files in os.walk(self.output_dir):
+            for file in files:
+                if file.endswith('.html'):
+                    html_files.append(os.path.join(root, file))
+        
+        for html_file in html_files:
+            replacements_in_file = 0
+            
+            # Read the HTML file
+            with open(html_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            soup = BeautifulSoup(content, 'html.parser')
+            
+            # Determine the current page URL for relative path calculation
+            rel_path = os.path.relpath(html_file, self.output_dir)
+            if rel_path == 'index.html':
+                current_page_url = self.base_url
+            else:
+                # Convert file path back to URL
+                url_path = rel_path.replace('\\', '/').replace('/index.html', '').rstrip('/')
+                if url_path:
+                    current_page_url = f"{self.base_url}/{url_path}"
+                else:
+                    current_page_url = self.base_url
+            
+            # Replace domain references in all relevant attributes
+            for element in soup.find_all(attrs=True):
+                for attr_name, attr_value in list(element.attrs.items()):
+                    if isinstance(attr_value, str) and any(domain_var in attr_value for domain_var in domain_variants):
+                        original_value = attr_value
+                        modified_value = self.replace_domain_in_attribute(attr_value, current_page_url, domain_variants)
+                        
+                        if modified_value != original_value:
+                            element[attr_name] = modified_value
+                            replacements_in_file += 1
+            
+            # Also process text content of script and other elements
+            for element in soup.find_all(['script', 'style']):
+                if element.string:
+                    original_text = element.string
+                    modified_text = self.replace_domain_in_text(original_text, current_page_url, domain_variants)
+                    
+                    if modified_text != original_text:
+                        element.string = modified_text
+                        replacements_in_file += 1
+            
+            # Handle srcset attributes specially (they have multiple URLs)
+            for img in soup.find_all('img', srcset=True):
+                srcset = img['srcset']
+                original_srcset = srcset
+                modified_srcset = self.replace_domain_in_srcset(srcset, current_page_url, domain_variants)
+                
+                if modified_srcset != original_srcset:
+                    img['srcset'] = modified_srcset
+                    replacements_in_file += 1
+            
+            # Handle inline CSS and text content
+            for style_element in soup.find_all('style'):
+                style_content = style_element.get_text()
+                if style_content:
+                    original_style = style_content
+                    modified_style = self.replace_domain_in_css(style_content, current_page_url, domain_variants)
+                    
+                    if modified_style != original_style:
+                        style_element.string = modified_style
+                        replacements_in_file += 1
+            
+            # Save the modified HTML if changes were made
+            if replacements_in_file > 0:
+                with open(html_file, 'w', encoding='utf-8') as f:
+                    f.write(str(soup))
+                total_replacements += replacements_in_file
+        
+        if total_replacements > 0:
+            self.log(f"Domain-Referenzen ersetzt: {total_replacements} Instanzen in {len(html_files)} Dateien")
+    
+    def replace_domain_in_attribute(self, attr_value, current_page_url, domain_variants):
+        """Replace domain references in a single attribute value"""
+        original_value = attr_value
+        
+        for domain_variant in domain_variants:
+            https_pattern = f"https://{domain_variant}"
+            http_pattern = f"http://{domain_variant}"
+            
+            if https_pattern in attr_value:
+                full_url = attr_value
+                if self.is_known_local_resource(full_url):
+                    # It's a known local resource - convert to relative path
+                    try:
+                        relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                        attr_value = attr_value.replace(full_url, relative_path)
+                    except:
+                        pass
+                else:
+                    # Check if it's a URL that should be converted to relative anyway
+                    # (pages that might not be in discovered_urls but are on our domain)
+                    parsed_url = urlparse(full_url)
+                    if self.should_convert_to_relative(parsed_url.path):
+                        try:
+                            relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                            attr_value = attr_value.replace(full_url, relative_path)
+                        except:
+                            # Fallback: just remove domain
+                            attr_value = attr_value.replace(https_pattern, "")
+                    elif self.should_remove_domain(parsed_url.path):
+                        # Remove domain for feeds, admin, API URLs etc.
+                        attr_value = attr_value.replace(https_pattern, "")
+            
+            if http_pattern in attr_value:
+                full_url = attr_value.replace(http_pattern, https_pattern.replace('https', 'http'))
+                if self.is_known_local_resource(full_url):
+                    try:
+                        relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                        attr_value = attr_value.replace(full_url.replace('https', 'http'), relative_path)
+                    except:
+                        pass
+                else:
+                    parsed_url = urlparse(full_url)
+                    if self.should_convert_to_relative(parsed_url.path):
+                        try:
+                            relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                            attr_value = attr_value.replace(full_url.replace('https', 'http'), relative_path)
+                        except:
+                            attr_value = attr_value.replace(http_pattern, "")
+                    elif self.should_remove_domain(parsed_url.path):
+                        attr_value = attr_value.replace(http_pattern, "")
+            
+            # Handle protocol-relative URLs
+            protocol_relative_pattern = f"//{domain_variant}"
+            if protocol_relative_pattern in attr_value:
+                if self.should_remove_domain(""):  # Default to removing protocol-relative
+                    attr_value = attr_value.replace(protocol_relative_pattern, "")
+        
+        return attr_value
+    
+    def should_convert_to_relative(self, path):
+        """Check if a path should be converted to relative (content pages)"""
+        # Convert most content pages to relative paths
+        if not path or path == '/':
+            return True
+        
+        # Don't convert special WordPress paths
+        exclude_patterns = [
+            '/wp-json/', '/wp-admin/', '/wp-login.php', '/xmlrpc.php',
+            '/feed/', '/comments/feed/', '/wp-content/plugins/',
+            '/wp-includes/', '/sitemap'
+        ]
+        
+        return not any(pattern in path for pattern in exclude_patterns)
+    
+    def should_remove_domain(self, path):
+        """Check if a domain should be removed (feeds, admin, API)"""
+        remove_patterns = [
+            '/wp-json/', '/wp-admin/', '/wp-login.php', '/xmlrpc.php',
+            '/feed/', '/comments/feed/'
+        ]
+        
+        return any(pattern in path for pattern in remove_patterns)
+    
+    def replace_domain_in_srcset(self, srcset, current_page_url, domain_variants):
+        """Replace domain references in srcset attribute"""
+        srcset_items = []
+        
+        for srcset_item in srcset.split(','):
+            srcset_item = srcset_item.strip()
+            if srcset_item:
+                parts = srcset_item.split()
+                if parts:
+                    url = parts[0]
+                    sizes = parts[1:] if len(parts) > 1 else []
+                    
+                    # Check if this URL needs domain replacement
+                    modified_url = self.replace_domain_in_attribute(url, current_page_url, domain_variants)
+                    
+                    if sizes:
+                        srcset_items.append(f"{modified_url} {' '.join(sizes)}")
+                    else:
+                        srcset_items.append(modified_url)
+        
+        return ', '.join(srcset_items)
+    
+    def replace_domain_in_css(self, css_content, current_page_url, domain_variants):
+        """Replace domain references in CSS content"""
+        import re
+        
+        for domain_variant in domain_variants:
+            # Replace CSS url() references
+            pattern = rf'url\(["\']?https?://{re.escape(domain_variant)}([^"\')\s]*)["\']?\)'
+            
+            def replace_css_url(match):
+                path = match.group(1)
+                full_url = f"https://{domain_variant}{path}"
+                if self.is_known_local_resource(full_url):
+                    try:
+                        relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                        return f'url({relative_path})'
+                    except:
+                        pass
+                return f'url({path})'
+            
+            css_content = re.sub(pattern, replace_css_url, css_content)
+        
+        return css_content
+    
+    def replace_domain_in_text(self, text_content, current_page_url, domain_variants):
+        """Replace domain references in text content (like scripts)"""
+        import re
+        
+        for domain_variant in domain_variants:
+            # Replace absolute URLs in text
+            pattern = rf'https?://{re.escape(domain_variant)}([^"\s\'"]*)'
+            
+            def replace_text_url(match):
+                path = match.group(1)
+                full_url = f"https://{domain_variant}{path}"
+                
+                if self.is_known_local_resource(full_url):
+                    try:
+                        relative_path = self.convert_to_relative_path(full_url, current_page_url)
+                        return relative_path
+                    except:
+                        pass
+                elif self.should_remove_domain(path):
+                    return path
+                
+                return match.group(0)  # Keep unchanged
+            
+            text_content = re.sub(pattern, replace_text_url, text_content)
+            
+            # Also handle protocol-relative URLs
+            protocol_relative_pattern = rf'//{re.escape(domain_variant)}([^"\s\'"]*)'
+            def replace_protocol_relative(match):
+                path = match.group(1)
+                if self.should_remove_domain(path):
+                    return path
+                return match.group(0)
+            
+            text_content = re.sub(protocol_relative_pattern, replace_protocol_relative, text_content)
+        
+        return text_content
+    
+    def is_known_local_resource(self, url):
+        """Check if a URL is a known local resource (asset or page)"""
+        # Remove query parameters for comparison
+        url_without_query = url.split('?')[0]
+        
+        # Check if it's in our assets (with or without query params)
+        if url in self.assets or url_without_query in self.assets:
+            return True
+        
+        # Check if any asset matches the base URL
+        for asset in self.assets:
+            if asset.split('?')[0] == url_without_query:
+                return True
+        
+        # Check if it's a discovered page
+        if url in self.discovered_urls or url_without_query in self.discovered_urls:
+            return True
+        
+        # Check if it's a scraped page
+        if hasattr(self, 'scraped_pages'):
+            if url in self.scraped_pages or url_without_query in self.scraped_pages:
+                return True
+        
+        # Check if it's likely a valid asset based on path and extension
+        parsed_url = urlparse(url_without_query)
+        path = parsed_url.path
+        if any(path.lower().endswith(ext) for ext in [
+            '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',
+            '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.avi', '.mov', '.mp3', '.wav'
+        ]):
+            # It's an asset-like URL from our domain
+            return True
+        
+        return False
     
     def convert_to_relative_path(self, target_url, current_page_url):
         """Convert absolute URL to relative path from current page location"""
