@@ -28,3 +28,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 scraped_sites/
+
+# Claude Code
+CLAUDE.md
