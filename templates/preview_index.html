@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Preview - WordPress Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-800">
+                    📱 Site Preview
+                </h1>
+                <div class="space-x-4">
+                    <a href="/" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200">
+                        🏠 Home
+                    </a>
+                    <a href="/result" class="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition duration-200">
+                        📊 Results
+                    </a>
+                </div>
+            </div>
+            
+            {% if sites %}
+                <div class="grid gap-6">
+                    {% for site in sites %}
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                            🌐 {{ site.domain }}
+                        </h2>
+                        
+                        <div class="grid gap-3">
+                            {% for timestamp in site.timestamps %}
+                            <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition duration-200">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-4">
+                                            <div class="text-sm text-gray-500">
+                                                📅 {{ timestamp.created.strftime('%d.%m.%Y %H:%M') }}
+                                            </div>
+                                            <div class="text-sm text-gray-500">
+                                                📦 {{ timestamp.size }}
+                                            </div>
+                                        </div>
+                                        <div class="text-xs text-gray-400 mt-1">
+                                            {{ timestamp.timestamp }}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex space-x-2">
+                                        <a href="/preview/{{ timestamp.path }}" 
+                                           target="_blank"
+                                           class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition duration-200 text-sm inline-flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                            </svg>
+                                            Preview
+                                        </a>
+                                        <a href="/preview/{{ timestamp.path }}/" 
+                                           target="_blank"
+                                           class="bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 transition duration-200 text-sm inline-flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path>
+                                            </svg>
+                                            Files
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-12">
+                    <div class="text-gray-500 mb-4">
+                        <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.29-1.009-5.674-2.64"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold text-gray-600 mb-2">Keine Sites verfügbar</h3>
+                    <p class="text-gray-500 mb-6">Scraped noch keine WordPress-Sites zum Anzeigen.</p>
+                    <a href="/" class="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition duration-200 inline-flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Neue Site scrapen
+                    </a>
+                </div>
+            {% endif %}
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-8">
+                <h3 class="font-semibold text-blue-800 mb-3">💡 Preview-Features</h3>
+                <div class="text-blue-700 space-y-2">
+                    <p><strong>📱 Live Preview:</strong> Klicken Sie auf "Preview", um die statische Site in einem neuen Tab zu öffnen</p>
+                    <p><strong>📁 File Browser:</strong> Klicken Sie auf "Files", um die Ordnerstruktur zu durchsuchen</p>
+                    <p><strong>🔗 Navigation:</strong> Alle internen Links funktionieren in der Preview</p>
+                    <p><strong>🎨 Styling:</strong> CSS, Bilder und Assets werden korrekt angezeigt</p>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mt-6">
+                <h3 class="font-semibold text-yellow-800 mb-3">⚠️ Hinweise zur Preview</h3>
+                <div class="text-yellow-700 space-y-1">
+                    <p>• Die Preview läuft über den Flask-Server (nicht wie die finale statische Site)</p>
+                    <p>• JavaScript funktioniert möglicherweise nicht vollständig</p>
+                    <p>• Formulare sind deaktiviert (wie in der statischen Version)</p>
+                    <p>• Cookie-Banner wurden automatisch entfernt</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

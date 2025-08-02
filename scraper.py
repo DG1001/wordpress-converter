@@ -117,10 +117,19 @@ class WordPressScraper:
             for url in urls:
                 loc = url.find('loc')
                 if loc and self.is_same_domain(loc.text):
-                    self.discovered_urls.add(loc.text)
+                    normalized_url = self.normalize_url(loc.text)
+                    self.discovered_urls.add(normalized_url)
                     
         except Exception as e:
             self.log(f"Fehler beim Parsen der Sitemap: {e}")
+    
+    def normalize_url(self, url):
+        """Normalize URL to avoid conflicts between /path and /path/"""
+        url = url.rstrip('/')
+        if url.endswith('.html') or url.endswith('.htm'):
+            return url
+        # For other URLs, we'll treat them consistently
+        return url
     
     def discover_urls_from_page(self, context, url):
         try:
@@ -135,8 +144,9 @@ class WordPressScraper:
             }''')
             
             for link in links:
-                if self.is_same_domain(link) and link not in self.discovered_urls:
-                    self.discovered_urls.add(link)
+                normalized_link = self.normalize_url(link)
+                if self.is_same_domain(normalized_link) and normalized_link not in self.discovered_urls:
+                    self.discovered_urls.add(normalized_link)
             
             page.close()
             
@@ -165,6 +175,9 @@ class WordPressScraper:
             self.log(f"Fehler beim Scraping von {url}: {e}")
     
     def process_html_assets(self, soup, page_url):
+        # Remove cookie banners first
+        self.remove_cookie_banners(soup)
+        
         # Process images
         for img in soup.find_all('img', src=True):
             src = img['src']
@@ -205,6 +218,110 @@ class WordPressScraper:
             for input_tag in form.find_all('input', type='submit'):
                 input_tag['type'] = 'button'
     
+    def remove_cookie_banners(self, soup):
+        """Remove common cookie banner elements from the HTML"""
+        removed_count = 0
+        
+        # Common cookie banner selectors (ID and class patterns)
+        cookie_selectors = [
+            # Common IDs
+            '#cookie-banner', '#cookie-consent', '#cookie-notice', '#cookie-bar',
+            '#cookiebar', '#cookie-popup', '#cookie-overlay', '#cookie-policy',
+            '#gdpr-banner', '#gdpr-consent', '#privacy-banner', '#privacy-notice',
+            '#cc-banner', '#cookieConsent', '#cookieBar', '#CookieConsent',
+            
+            # Common classes
+            '.cookie-banner', '.cookie-consent', '.cookie-notice', '.cookie-bar',
+            '.cookiebar', '.cookie-popup', '.cookie-overlay', '.cookie-policy',
+            '.gdpr-banner', '.gdpr-consent', '.privacy-banner', '.privacy-notice',
+            '.cookie-warning', '.cookie-alert', '.cookie-info', '.cookie-dialog',
+            '.cc-banner', '.cc-window', '.cc-compliance', '.cookieConsent',
+            '.cookie-consent-banner', '.cookie-notification', '.cookies-notice',
+            
+            # Popular cookie plugins
+            '.cookie-law-info-bar', '.cli-bar-container', '.moove_gdpr_cookie_info_bar',
+            '.gdpr-cookie-consent-banner', '.wp-gdpr-cookie-notice', '.catapult-cookie-bar',
+            '.borlabs-cookie-banner', '.real-cookie-banner', '.cookiebot-banner',
+            '.iubenda-cookie-banner', '.complianz-cookie-banner', '.cmplz-cookiebanner',
+            '.uk-cookie-consent', '.eu-cookie-law', '.cookie-choices-info',
+            
+            # Generic patterns
+            '[class*="cookie"]', '[class*="gdpr"]', '[class*="privacy"]',
+            '[id*="cookie"]', '[id*="gdpr"]', '[id*="privacy"]'
+        ]
+        
+        # Remove elements by common selectors
+        for selector in cookie_selectors:
+            try:
+                elements = soup.select(selector)
+                for element in elements:
+                    if self.is_likely_cookie_banner(element):
+                        element.decompose()
+                        removed_count += 1
+            except Exception:
+                continue
+        
+        # Additional text-based detection for elements that might not have obvious classes
+        all_elements = soup.find_all(['div', 'section', 'aside', 'header', 'footer', 'nav'])
+        for element in all_elements:
+            if self.is_likely_cookie_banner_by_text(element):
+                element.decompose()
+                removed_count += 1
+        
+        if removed_count > 0:
+            self.log(f"Cookie-Banner entfernt: {removed_count} Elemente")
+    
+    def is_likely_cookie_banner(self, element):
+        """Check if an element is likely a cookie banner based on attributes and content"""
+        # Check attributes
+        attrs_text = ' '.join([
+            element.get('id', '').lower(),
+            element.get('class', '') if isinstance(element.get('class'), str) else ' '.join(element.get('class', [])),
+            element.get('role', '').lower(),
+            element.get('aria-label', '').lower()
+        ])
+        
+        cookie_keywords = [
+            'cookie', 'gdpr', 'privacy', 'consent', 'tracking', 'analytics',
+            'datenschutz', 'einverstanden', 'zustimm', 'akzeptier'
+        ]
+        
+        return any(keyword in attrs_text for keyword in cookie_keywords)
+    
+    def is_likely_cookie_banner_by_text(self, element):
+        """Check if an element is likely a cookie banner based on text content"""
+        if not element.get_text(strip=True):
+            return False
+        
+        text = element.get_text().lower()
+        
+        # Must contain cookie-related terms
+        cookie_terms = ['cookie', 'gdpr', 'datenschutz', 'privacy', 'consent']
+        has_cookie_term = any(term in text for term in cookie_terms)
+        
+        if not has_cookie_term:
+            return False
+        
+        # And contain action terms
+        action_terms = [
+            'akzeptieren', 'zustimmen', 'einverstanden', 'ablehnen', 'mehr erfahren',
+            'accept', 'agree', 'consent', 'decline', 'learn more', 'settings',
+            'konfigurieren', 'anpassen', 'verwalten', 'manage', 'configure'
+        ]
+        has_action = any(term in text for term in action_terms)
+        
+        # Check if it's positioned like a banner (common attributes)
+        style = element.get('style', '').lower()
+        class_text = ' '.join(element.get('class', [])) if element.get('class') else ''
+        id_text = element.get('id', '').lower()
+        
+        is_positioned = any(pos in style for pos in ['fixed', 'sticky', 'absolute']) or \
+                       any(pos in class_text.lower() for pos in ['top', 'bottom', 'overlay', 'modal']) or \
+                       any(pos in id_text for pos in ['top', 'bottom', 'overlay', 'modal'])
+        
+        # Short text with both cookie terms and actions is likely a banner
+        return has_cookie_term and has_action and (is_positioned or len(text) < 1000)
+    
     def convert_to_relative_path(self, url):
         parsed = urlparse(url)
         path = parsed.path
@@ -233,15 +350,25 @@ class WordPressScraper:
             os.makedirs(dir_path, exist_ok=True)
             file_path = os.path.join(dir_path, 'index.html')
         else:
-            if not path.endswith('.html'):
+            # Check if it's a known file extension
+            if any(path.lower().endswith(ext) for ext in ['.html', '.htm', '.php', '.asp', '.aspx']):
+                dir_path = os.path.dirname(os.path.join(self.output_dir, path.strip('/')))
+                if dir_path and dir_path != self.output_dir:
+                    os.makedirs(dir_path, exist_ok=True)
+                file_path = os.path.join(self.output_dir, path.strip('/'))
+                # Ensure it ends with .html
+                if not file_path.endswith('.html'):
+                    file_path += '.html'
+            else:
+                # Treat as a page that needs a directory structure
                 dir_path = os.path.join(self.output_dir, path.strip('/'))
                 os.makedirs(dir_path, exist_ok=True)
                 file_path = os.path.join(dir_path, 'index.html')
-            else:
-                dir_path = os.path.dirname(os.path.join(self.output_dir, path.strip('/')))
-                if dir_path:
-                    os.makedirs(dir_path, exist_ok=True)
-                file_path = os.path.join(self.output_dir, path.strip('/'))
+        
+        # Ensure parent directory exists
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir and parent_dir != self.output_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -267,8 +394,26 @@ class WordPressScraper:
             file_path = os.path.join(self.output_dir, asset_path)
             dir_path = os.path.dirname(file_path)
             
+            # Check if the target path already exists as a directory
+            if os.path.isdir(file_path):
+                # If it's a directory, save the asset with a different name
+                base_name = os.path.basename(asset_path)
+                if '.' in base_name:
+                    name, ext = os.path.splitext(base_name)
+                    new_name = f"{name}_asset{ext}"
+                else:
+                    new_name = f"{base_name}_asset"
+                file_path = os.path.join(dir_path, new_name)
+                self.log(f"Pfad-Konflikt erkannt, speichere Asset als: {new_name}")
+            
+            # Ensure parent directory exists
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
+            
+            # Check again if something was created in the meantime
+            if os.path.isdir(file_path):
+                self.log(f"Kann Asset nicht speichern, Pfad ist Verzeichnis: {asset_path}")
+                return
             
             with open(file_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
