@@ -170,6 +170,9 @@ class WordPressScraper:
             soup = BeautifulSoup(content, 'html.parser')
             self.process_html_assets(soup, url)
             
+            # Replace domain references with local paths
+            self.replace_domain_references(soup, url)
+            
             # Save processed HTML
             self.save_html_file(url, str(soup))
             
@@ -249,8 +252,32 @@ class WordPressScraper:
         """Remove common cookie banner elements from the HTML"""
         removed_count = 0
         
+        # Remove Cookiebot scripts and elements first (specific to kirsten-controls.de issue)
+        cookiebot_scripts = soup.find_all('script', src=lambda x: x and 'cookiebot.com' in x)
+        for script in cookiebot_scripts:
+            script.decompose()
+            removed_count += 1
+            
+        # Remove other cookie-related scripts (both external and inline)
+        cookie_scripts = soup.find_all('script', src=lambda x: x and any(term in x.lower() for term in ['cookie', 'consent', 'gdpr']))
+        for script in cookie_scripts:
+            script.decompose()
+            removed_count += 1
+            
+        # Remove inline scripts that mention cookies/consent
+        inline_scripts = soup.find_all('script', src=False)
+        for script in inline_scripts:
+            script_content = script.get_text().lower()
+            if any(term in script_content for term in ['cookiebot', 'cookie-consent', 'gdpr', 'cookie-banner', 'cookieconsent']):
+                script.decompose()
+                removed_count += 1
+        
         # Common cookie banner selectors (ID and class patterns)
         cookie_selectors = [
+            # Cookiebot specific
+            '#CookieConsent', '.CookieConsent', '[data-cookiebot*=""]',
+            '#cookiebot', '.cookiebot', '#cookiebot-banner', '.cookiebot-banner',
+            
             # Common IDs
             '#cookie-banner', '#cookie-consent', '#cookie-notice', '#cookie-bar',
             '#cookiebar', '#cookie-popup', '#cookie-overlay', '#cookie-policy',
@@ -348,6 +375,147 @@ class WordPressScraper:
         
         # Short text with both cookie terms and actions is likely a banner
         return has_cookie_term and has_action and (is_positioned or len(text) < 1000)
+    
+    def replace_domain_references(self, soup, current_page_url):
+        """Replace hard-coded domain references with local file paths"""
+        import re
+        
+        # Get the domain from the base URL
+        domain = urlparse(self.base_url).netloc
+        domain_variants = [
+            domain,
+            f"www.{domain}",
+            domain.replace('www.', '') if domain.startswith('www.') else f"www.{domain}"
+        ]
+        
+        removed_count = 0
+        
+        # Process all text nodes and attributes that might contain URLs
+        for element in soup.find_all(string=True):
+            parent = element.parent
+            if parent and parent.name not in ['script', 'style']:  # Skip script and style tags
+                original_text = str(element)
+                modified_text = original_text
+                
+                for domain_variant in domain_variants:
+                    # Replace absolute URLs
+                    https_pattern = f"https://{domain_variant}"
+                    http_pattern = f"http://{domain_variant}"
+                    protocol_relative_pattern = f"//{domain_variant}"
+                    
+                    if https_pattern in modified_text:
+                        modified_text = modified_text.replace(https_pattern, "")
+                        removed_count += 1
+                    if http_pattern in modified_text:
+                        modified_text = modified_text.replace(http_pattern, "")
+                        removed_count += 1
+                    if protocol_relative_pattern in modified_text:
+                        modified_text = modified_text.replace(protocol_relative_pattern, "")
+                        removed_count += 1
+                
+                if modified_text != original_text:
+                    element.replace_with(modified_text)
+        
+        # Process style elements (inline CSS)
+        style_elements = soup.find_all('style')
+        for style_element in style_elements:
+            style_content = style_element.get_text()
+            if style_content:
+                original_style = style_content
+                modified_style = style_content
+                
+                for domain_variant in domain_variants:
+                    # Replace absolute URLs in CSS
+                    https_pattern = f"https://{domain_variant}"
+                    http_pattern = f"http://{domain_variant}"
+                    protocol_relative_pattern = f"//{domain_variant}"
+                    
+                    # For CSS, we need to be more careful to maintain proper paths
+                    if https_pattern in modified_style:
+                        # Replace with relative paths for local assets
+                        import re
+                        url_pattern = rf'url\(["\']?{re.escape(https_pattern)}([^"\')\s]*)["\']?\)'
+                        def replace_css_url(match):
+                            path = match.group(1)
+                            return f'url({path})'
+                        modified_style = re.sub(url_pattern, replace_css_url, modified_style)
+                        removed_count += 1
+                    
+                    if http_pattern in modified_style:
+                        url_pattern = rf'url\(["\']?{re.escape(http_pattern)}([^"\')\s]*)["\']?\)'
+                        def replace_css_url(match):
+                            path = match.group(1)
+                            return f'url({path})'
+                        modified_style = re.sub(url_pattern, replace_css_url, modified_style)
+                        removed_count += 1
+                
+                if modified_style != original_style:
+                    style_element.string = modified_style
+
+        # Process srcset attributes (responsive images) - special handling
+        srcset_elements = soup.find_all(attrs={'srcset': True})
+        for element in srcset_elements:
+            srcset_value = element.get('srcset', '')
+            if srcset_value:
+                original_srcset = srcset_value
+                modified_srcset = srcset_value
+                
+                for domain_variant in domain_variants:
+                    https_pattern = f"https://{domain_variant}"
+                    http_pattern = f"http://{domain_variant}"
+                    
+                    # Replace in srcset (format: "url size, url size, ...")
+                    if https_pattern in modified_srcset:
+                        modified_srcset = modified_srcset.replace(https_pattern, "")
+                        removed_count += 1
+                    if http_pattern in modified_srcset:
+                        modified_srcset = modified_srcset.replace(http_pattern, "")
+                        removed_count += 1
+                
+                if modified_srcset != original_srcset:
+                    element['srcset'] = modified_srcset
+
+        # Process attributes that commonly contain URLs
+        url_attributes = ['src', 'href', 'action', 'data-src', 'data-href', 'content', 'style']
+        for attr in url_attributes:
+            elements_with_attr = soup.find_all(attrs={attr: True})
+            for element in elements_with_attr:
+                attr_value = element.get(attr, '')
+                if not attr_value:
+                    continue
+                    
+                original_value = attr_value
+                modified_value = attr_value
+                
+                for domain_variant in domain_variants:
+                    https_pattern = f"https://{domain_variant}"
+                    http_pattern = f"http://{domain_variant}"
+                    protocol_relative_pattern = f"//{domain_variant}"
+                    
+                    if https_pattern in modified_value:
+                        # Try to convert to relative path if it's a local resource
+                        if any(https_pattern + path in self.discovered_urls for path in ['', '/']):
+                            try:
+                                modified_value = self.convert_to_relative_path(modified_value, current_page_url)
+                            except:
+                                modified_value = modified_value.replace(https_pattern, "")
+                        else:
+                            modified_value = modified_value.replace(https_pattern, "")
+                        removed_count += 1
+                        
+                    if http_pattern in modified_value:
+                        modified_value = modified_value.replace(http_pattern, "")
+                        removed_count += 1
+                        
+                    if protocol_relative_pattern in modified_value:
+                        modified_value = modified_value.replace(protocol_relative_pattern, "")
+                        removed_count += 1
+                
+                if modified_value != original_value:
+                    element[attr] = modified_value
+        
+        if removed_count > 0:
+            self.log(f"Domain-Referenzen entfernt: {removed_count} Instanzen")
     
     def convert_to_relative_path(self, target_url, current_page_url):
         """Convert absolute URL to relative path from current page location"""
@@ -501,8 +669,24 @@ class WordPressScraper:
             
             def replace_url(match):
                 url = match.group(1)
-                if not url.startswith(('http://', 'https://', 'data:', '//')):
-                    # Resolve relative URL in CSS context
+                if url.startswith(('http://', 'https://')):
+                    # Handle absolute URLs - check if they're from our domain
+                    if self.is_same_domain(url):
+                        if self.is_valid_asset(url):
+                            # Collect new assets for download
+                            new_assets.add(url)
+                            # Convert to relative path from CSS file location
+                            relative_to_css = self.convert_to_relative_path(url, css_url).lstrip('./')
+                            return f'url({relative_to_css})'
+                        else:
+                            # Not a valid asset, just remove domain reference
+                            parsed_url = urlparse(url)
+                            return f'url({parsed_url.path})'
+                    else:
+                        # External URL, leave as-is
+                        return match.group(0)
+                elif not url.startswith(('data:', '//')):
+                    # Relative URL - resolve in CSS context
                     absolute_url = urljoin(css_url, url)
                     if self.is_same_domain(absolute_url) and self.is_valid_asset(absolute_url):
                         # Collect new assets instead of adding directly to avoid iterator issues
