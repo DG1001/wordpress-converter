@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Progress - WordPress Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">
+                Scraping in Bearbeitung
+            </h1>
+            
+            <div class="bg-white rounded-lg shadow-md p-8 mb-6">
+                <div class="mb-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">Fortschritt</h2>
+                    
+                    <div class="mb-4">
+                        <div class="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>Fortschritt</span>
+                            <span id="progress-text">0 / 0 Seiten</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-3">
+                            <div id="progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-600" id="total-pages">0</div>
+                            <div class="text-sm text-blue-700">Gefundene Seiten</div>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600" id="completed-pages">0</div>
+                            <div class="text-sm text-green-700">Abgeschlossen</div>
+                        </div>
+                        <div class="bg-yellow-50 p-4 rounded-lg">
+                            <div class="text-2xl font-bold text-yellow-600" id="status">Läuft</div>
+                            <div class="text-sm text-yellow-700">Status</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Aktuelle Seite:</label>
+                        <div id="current-page" class="text-sm text-gray-600 bg-gray-50 p-2 rounded break-all">
+                            Warte auf Start...
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Website URL:</label>
+                        <div id="current-url" class="text-sm text-gray-600 bg-gray-50 p-2 rounded break-all">
+                            Lädt...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button 
+                        id="cancel-btn"
+                        onclick="cancelScraping()"
+                        class="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-200"
+                    >
+                        Abbrechen
+                    </button>
+                    <button 
+                        id="refresh-btn"
+                        onclick="refreshProgress()"
+                        class="bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition duration-200"
+                    >
+                        Aktualisieren
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-md p-8">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Live-Log</h2>
+                <div id="log-container" class="bg-gray-900 text-green-400 p-4 rounded-lg h-64 overflow-y-auto font-mono text-sm">
+                    <div id="log-content">Warte auf Log-Nachrichten...</div>
+                </div>
+            </div>
+            
+            <div id="completion-message" class="hidden bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mt-6">
+                <div class="flex">
+                    <div class="flex-1">
+                        <strong>Scraping abgeschlossen!</strong> 
+                        <span id="completion-text"></span>
+                    </div>
+                    <button 
+                        onclick="goToResults()"
+                        class="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 transition duration-200"
+                    >
+                        Ergebnisse anzeigen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+        
+        socket.on('progress_update', function(data) {
+            updateProgress(data);
+        });
+        
+        function updateProgress(data) {
+            // Update progress bar
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const totalPages = data.total_pages || 0;
+            const completedPages = data.completed_pages || 0;
+            
+            const percentage = totalPages > 0 ? (completedPages / totalPages) * 100 : 0;
+            progressBar.style.width = percentage + '%';
+            progressText.textContent = `${completedPages} / ${totalPages} Seiten`;
+            
+            // Update counters
+            document.getElementById('total-pages').textContent = totalPages;
+            document.getElementById('completed-pages').textContent = completedPages;
+            
+            // Update current page
+            if (data.current_page) {
+                document.getElementById('current-page').textContent = data.current_page;
+            }
+            
+            // Update current URL
+            if (data.current_url) {
+                document.getElementById('current-url').textContent = data.current_url;
+            }
+            
+            // Update status
+            const statusElement = document.getElementById('status');
+            if (data.active) {
+                statusElement.textContent = 'Läuft';
+                statusElement.className = 'text-2xl font-bold text-yellow-600';
+            } else {
+                statusElement.textContent = 'Abgeschlossen';
+                statusElement.className = 'text-2xl font-bold text-green-600';
+                showCompletionMessage(completedPages);
+            }
+            
+            // Update logs
+            if (data.logs && data.logs.length > 0) {
+                updateLogs(data.logs);
+            }
+        }
+        
+        function updateLogs(logs) {
+            const logContent = document.getElementById('log-content');
+            logContent.innerHTML = logs.map(log => `<div>${log}</div>`).join('');
+            
+            // Scroll to bottom
+            const logContainer = document.getElementById('log-container');
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        function showCompletionMessage(completedPages) {
+            const message = document.getElementById('completion-message');
+            const text = document.getElementById('completion-text');
+            text.textContent = `${completedPages} Seiten wurden erfolgreich gespeichert.`;
+            message.classList.remove('hidden');
+        }
+        
+        function cancelScraping() {
+            fetch('/cancel_scraping', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('status').textContent = 'Abgebrochen';
+                    document.getElementById('status').className = 'text-2xl font-bold text-red-600';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        function refreshProgress() {
+            fetch('/api/progress')
+            .then(response => response.json())
+            .then(data => {
+                updateProgress(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        function goToResults() {
+            window.location.href = '/result';
+        }
+        
+        // Initial load
+        refreshProgress();
+        
+        // Auto-refresh every 2 seconds
+        setInterval(refreshProgress, 2000);
+    </script>
+</body>
+</html>

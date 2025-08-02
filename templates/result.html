@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Ergebnisse - WordPress Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-6xl mx-auto">
+            <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">
+                Scraping Ergebnisse
+            </h1>
+            
+            <!-- Statistics -->
+            <div class="bg-white rounded-lg shadow-md p-8 mb-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">Statistiken</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-blue-50 p-6 rounded-lg text-center">
+                        <div class="text-3xl font-bold text-blue-600 mb-2">{{ total_pages }}</div>
+                        <div class="text-blue-700">Gespeicherte Seiten</div>
+                    </div>
+                    <div class="bg-green-50 p-6 rounded-lg text-center">
+                        <div class="text-3xl font-bold text-green-600 mb-2">{{ total_size }}</div>
+                        <div class="text-green-700">Gesamtgröße</div>
+                    </div>
+                    <div class="bg-purple-50 p-6 rounded-lg text-center">
+                        <div class="text-3xl font-bold text-purple-600 mb-2">{{ files|length }}</div>
+                        <div class="text-purple-700">Dateien total</div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex flex-wrap gap-4">
+                    <a 
+                        href="/download_zip" 
+                        class="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition duration-200 font-semibold inline-flex items-center"
+                    >
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                        </svg>
+                        ZIP herunterladen
+                    </a>
+                    <a 
+                        href="/" 
+                        class="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition duration-200 font-semibold inline-flex items-center"
+                    >
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Neue Site scrapen
+                    </a>
+                </div>
+            </div>
+            
+            <!-- File Browser -->
+            <div class="bg-white rounded-lg shadow-md p-8">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">Datei-Browser</h2>
+                
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="text-sm text-gray-600">
+                        <strong>Ausgabe-Verzeichnis:</strong> {{ output_dir }}
+                    </div>
+                </div>
+                
+                {% if files %}
+                <div class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto" style="max-height: 500px;">
+                    <div class="font-mono text-sm">
+                        {% for file in files %}
+                        <div class="py-1 hover:bg-gray-800 px-2 rounded">
+                            {% if file.is_dir %}
+                                <span class="text-blue-400">
+                                    {{ file.indent }}📁 {{ file.name }}
+                                </span>
+                            {% else %}
+                                <span class="text-gray-300">
+                                    {{ file.indent }}📄 {{ file.name }}
+                                    <span class="text-gray-500 ml-2">({{ "%.1f"|format(file.size/1024) }} KB)</span>
+                                </span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-12">
+                    <div class="text-gray-500 mb-4">
+                        <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <p class="text-gray-500">Keine Dateien gefunden</p>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Instructions -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mt-6">
+                <h3 class="font-semibold text-yellow-800 mb-3">📖 Verwendung der statischen Website</h3>
+                <div class="text-yellow-700 space-y-2">
+                    <p><strong>1. ZIP-Datei herunterladen:</strong> Klicken Sie auf "ZIP herunterladen", um die komplette Website zu erhalten.</p>
+                    <p><strong>2. Entpacken:</strong> Entpacken Sie die ZIP-Datei in einen Ordner Ihrer Wahl.</p>
+                    <p><strong>3. Öffnen:</strong> Öffnen Sie die <code>index.html</code> Datei in einem Webbrowser, um die statische Website anzuzeigen.</p>
+                    <p><strong>4. Hosting:</strong> Laden Sie die Dateien auf einen Webserver hoch, um die Website online zu stellen.</p>
+                </div>
+            </div>
+            
+            <!-- Features -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-6">
+                <h3 class="font-semibold text-blue-800 mb-3">✅ Was wurde konvertiert</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-blue-700">
+                    <div>
+                        <ul class="space-y-1">
+                            <li>✓ Alle öffentlichen Seiten und Posts</li>
+                            <li>✓ Bilder und Medien-Dateien</li>
+                            <li>✓ CSS-Stylesheets</li>
+                            <li>✓ JavaScript-Dateien</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <ul class="space-y-1">
+                            <li>✓ Interne Links funktionsfähig</li>
+                            <li>✓ Navigation bleibt erhalten</li>
+                            <li>✓ Responsive Design</li>
+                            <li>✓ SEO-freundliche Struktur</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Limitations -->
+            <div class="bg-red-50 border border-red-200 rounded-lg p-6 mt-6">
+                <h3 class="font-semibold text-red-800 mb-3">⚠️ Einschränkungen</h3>
+                <div class="text-red-700 space-y-1">
+                    <p>• Kontaktformulare wurden deaktiviert (keine serverseitige Verarbeitung)</p>
+                    <p>• Such-Funktionen funktionieren nicht (benötigen Datenbank)</p>
+                    <p>• Kommentar-System ist nicht funktional</p>
+                    <p>• WordPress-Admin-Bereich ist nicht enthalten</p>
+                    <p>• Dynamische Inhalte werden zu statischen Momentaufnahmen</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

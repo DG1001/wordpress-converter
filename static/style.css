@@ -1,0 +1,163 @@
+/* Custom styles for WordPress to Static Site Converter */
+
+/* Smooth animations */
+* {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Progress bar animations */
+.progress-bar {
+    transition: width 0.3s ease-in-out;
+}
+
+/* Log container styling */
+#log-container {
+    font-family: 'Courier New', monospace;
+    background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+    border: 1px solid #444;
+}
+
+#log-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#log-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+#log-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+#log-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* File browser styling */
+.file-browser {
+    background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+    border: 1px solid #444;
+}
+
+/* Button hover effects */
+.btn-primary {
+    background: linear-gradient(145deg, #3b82f6, #2563eb);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(145deg, #2563eb, #1d4ed8);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+/* Card animations */
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Status indicators */
+.status-running {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Loading spinner */
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Form styling improvements */
+input[type="url"]:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    .grid-cols-3 {
+        grid-template-columns: 1fr;
+    }
+    
+    #log-container {
+        height: 200px;
+    }
+}
+
+/* Success/Error message styling */
+.alert-success {
+    background: linear-gradient(145deg, #10b981, #059669);
+    border-left: 4px solid #047857;
+}
+
+.alert-error {
+    background: linear-gradient(145deg, #ef4444, #dc2626);
+    border-left: 4px solid #b91c1c;
+}
+
+/* Progress percentage display */
+.progress-text {
+    font-variant-numeric: tabular-nums;
+}
+
+/* File size formatting */
+.file-size {
+    font-variant-numeric: tabular-nums;
+    font-family: monospace;
+}
+
+/* Syntax highlighting for file extensions */
+.file-html { color: #e34c26; }
+.file-css { color: #1572b6; }
+.file-js { color: #f7df1e; }
+.file-img { color: #ff6b6b; }
+.file-font { color: #4ecdc4; }
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for main content */
+body::-webkit-scrollbar {
+    width: 8px;
+}
+
+body::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+body::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

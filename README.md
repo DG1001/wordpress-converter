@@ -1,112 +1,131 @@
-# Flask Project
+# WordPress to Static Site Converter
 
-This is a Flask application created with XaresAICoder.
+Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollständig als statische Kopien erfasst.
 
-## Setup
+## Features
 
-1. Activate the virtual environment:
+- 🌐 **Vollständige Website-Erfassung**: Alle öffentlichen Seiten, Posts und Kategorien
+- 📱 **Asset-Download**: Automatisches Herunterladen von Bildern, CSS, JavaScript und Fonts
+- 🔗 **Link-Rewriting**: Konvertierung interner URLs für lokale Navigation
+- 📊 **Live-Fortschritt**: Echtzeit-Updates während des Scraping-Prozesses
+- 📦 **ZIP-Export**: Download der kompletten statischen Website
+- 🎨 **Responsive Design**: Moderne UI mit TailwindCSS
+
+## Installation
+
+1. **Repository klonen oder herunterladen**
+
+2. **Virtuelle Umgebung erstellen (empfohlen)**
    ```bash
-   source venv/bin/activate
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # oder
+   venv\Scripts\activate     # Windows
    ```
 
-2. Install dependencies:
+3. **Dependencies installieren**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the application:
+4. **Playwright Browser installieren**
+   ```bash
+   playwright install chromium
+   ```
+
+## Verwendung
+
+1. **Anwendung starten**
    ```bash
    python app.py
    ```
 
-4. **Access your app:**
-   
-   When you start the Flask app, VS Code will automatically detect port 5000
-   and provide the correct URL via port forwarding notifications.
-   Simply click the provided link to access your application!
+2. **Browser öffnen**
+   - Navigieren Sie zu: `http://localhost:5000`
 
-## Development
+3. **WordPress-Site scrapen**
+   - URL eingeben (z.B. `https://beispiel-wordpress-site.com`)
+   - "Scraping starten" klicken
+   - Fortschritt live verfolgen
+   - ZIP-Datei herunterladen
 
-- Edit `app.py` to add your routes and logic
-- Add new dependencies to `requirements.txt`
-- Use the integrated terminal for package management
+## Technischer Stack
 
-## AI Coding Assistance
+- **Backend**: Python 3.11+, Flask, Flask-SocketIO
+- **Frontend**: TailwindCSS (CDN), Vanilla JavaScript
+- **Scraping**: Playwright (Chromium)
+- **Parsing**: BeautifulSoup4
+- **Storage**: Dateisystem
 
-XaresAICoder includes four powerful AI coding tools. Choose the one that best fits your workflow:
+## Funktionsweise
 
-### 🤖 OpenCode SST - Multi-model AI Assistant
-Best for: Project analysis, multi-model support, collaborative development
+### 1. URL-Discovery
+- Prüfung der Sitemap.xml (falls vorhanden)
+- Rekursive Erfassung interner Links
+- Vermeidung von Dubletten
 
-```bash
-# Quick setup
-setup_opencode
+### 2. Asset-Handling
+- Download aller Medien-Dateien innerhalb der Domain
+- Anpassung der HTML-Pfade für lokale Navigation
+- Erhaltung der ursprünglichen Ordnerstruktur
 
-# Get started
-opencode          # Start interactive session
-# Then type: /init  # Initialize project analysis
+### 3. HTML-Processing
+- Konvertierung interner Links zu relativen Pfaden
+- Deaktivierung von Kontaktformularen
+- Erhaltung der ursprünglichen Struktur und Formatierung
+
+## Ausgabestruktur
+
+```
+scraped_sites/
+└── domain-name/
+    └── timestamp/
+        ├── index.html
+        ├── page/
+        │   └── index.html
+        ├── wp-content/
+        │   └── uploads/
+        │       └── images...
+        └── wp-includes/
+            └── assets...
 ```
 
-**Key Commands:**
-- `/init` - Analyze your project
-- `/share` - Share session for collaboration
-- `/help` - Show available commands
+## Einschränkungen
 
-### 🤖 Aider - AI Pair Programming
-Best for: Interactive coding, file editing, git integration
+- Nur öffentlich zugängliche Inhalte werden erfasst
+- Kontaktformulare werden deaktiviert (keine serverseitige Verarbeitung)
+- Such-Funktionen funktionieren nicht (benötigen Datenbank)
+- Kommentar-Systeme sind nicht funktional
+- WordPress-Admin-Bereich ist nicht enthalten
 
+## Beispiel-Workflow
+
+1. Benutzer öffnet `http://localhost:5000`
+2. Gibt WordPress-URL ein: `https://demo-wordpress-site.com`
+3. Klickt "Scraping starten"
+4. Sieht Live-Fortschritt der Erfassung
+5. Nach Abschluss: Datei-Browser mit allen erfassten Inhalten
+6. Lädt ZIP der kompletten statischen Site herunter
+
+## Troubleshooting
+
+### Playwright Installation
+Falls Playwright-Fehler auftreten:
 ```bash
-# Setup (requires API key)
-export OPENAI_API_KEY=your_key_here  # or ANTHROPIC_API_KEY, GEMINI_API_KEY
-setup_aider
-
-# Get started
-aider             # Start interactive pair programming
+playwright install --force chromium
 ```
 
-**Features:**
-- Direct file editing with AI
-- Automatic git commits
-- Supports multiple AI models
-- Works with your existing codebase
-
-### 🤖 Gemini CLI - Google's AI Assistant  
-Best for: Code generation, debugging, Google ecosystem integration
-
-```bash
-# Setup (requires API key from https://makersuite.google.com/app/apikey)
-export GEMINI_API_KEY=your_key_here
-setup_gemini
-
-# Get started
-gemini            # Start interactive session
+### Port bereits in Verwendung
+Falls Port 5000 bereits belegt ist, ändern Sie in `app.py`:
+```python
+socketio.run(app, debug=True, host='0.0.0.0', port=5001)
 ```
 
-**Features:**
-- Natural language code generation
-- Code explanation and debugging
-- Project analysis and suggestions
+### Performance
+- Größere Websites können länger dauern
+- Bei sehr großen Sites ggf. Timeout erhöhen
+- Scraping ist automatisch "respectful" (0.5s Pause zwischen Requests)
 
-### 🤖 Claude Code - Anthropic's Agentic Tool
-Best for: Deep codebase understanding, multi-file editing, advanced workflows
+## Lizenz
 
-```bash
-# Setup (requires Claude Pro/Max or API billing)
-setup_claude
-
-# Get started
-claude            # Start agentic coding session
-```
-
-**Features:**
-- Understands entire codebase
-- Multi-file editing capabilities
-- Git workflow automation
-- Advanced reasoning and planning
-
-## Quick Setup for All Tools
-
-Run this command to see setup instructions for all AI tools:
-```bash
-setup_ai_tools
-```
+MIT License - Frei für private und kommerzielle Nutzung.
