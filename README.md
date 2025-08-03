@@ -6,13 +6,15 @@ Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollst
 
 - 🌐 **Vollständige Website-Erfassung**: Alle öffentlichen Seiten, Posts und Kategorien
 - 📱 **Asset-Download**: Automatisches Herunterladen von Bildern, CSS, JavaScript und Fonts
-- 🔗 **Intelligente Pfad-Konvertierung**: Korrekte relative Pfade für alle Seitenebenen
-- 🚫 **Cookie-Banner Entfernung**: Automatische Erkennung und Entfernung von Cookie-Bannern
+- 🔗 **Zwei-Phasen Domain-Ersetzung**: 100% Konvertierung zu relativen Pfaden
+- 📱 **Srcset-Unterstützung**: Responsive Bilder mit allen Auflösungsvarianten
+- 🚫 **Erweiterte Cookiebot-Entfernung**: Vollständige Banner-Entfernung (85+ Elemente)
+- ⚙️ **JavaScript-Navigation Schutz**: Erhaltung funktionaler Website-Navigation
 - 📊 **Live-Fortschritt**: Echtzeit-Updates während des Scraping-Prozesses
 - 📁 **File-Browser**: Navigation durch die komplette Website-Struktur
 - 📦 **ZIP-Export**: Download der kompletten statischen Website
 - 🎨 **Responsive Design**: Moderne UI mit TailwindCSS
-- ⚡ **Konflikt-Vermeidung**: Intelligente Behandlung von Pfad-Konflikten zwischen Seiten und Assets
+- ⚡ **Query-Parameter Support**: Korrekte Behandlung von CSS/JS-Versionierung
 
 ## Installation
 
@@ -72,13 +74,26 @@ Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollst
 - Anpassung der HTML-Pfade für lokale Navigation
 - Erhaltung der ursprünglichen Ordnerstruktur
 
-### 3. HTML-Processing
-- **Intelligente Pfad-Konvertierung**: Korrekte relative Pfade basierend auf Seitentiefe
-  - Root-Seiten: `./wp-content/uploads/image.jpg`
-  - Unterseiten: `../wp-content/uploads/image.jpg`
-  - Tiefe Seiten: `../../wp-content/uploads/image.jpg`
-- **Cookie-Banner Entfernung**: Automatische Erkennung und Entfernung häufiger Cookie-Banner
-- **Asset-Validierung**: Unterscheidung zwischen Seiten und Assets zur Konflikt-Vermeidung
+### 3. HTML-Processing & Domain-Ersetzung
+
+**Zwei-Phasen-Ansatz:**
+- **Phase 1**: Vollständige Asset-Entdeckung und Download
+- **Phase 2**: Nachbearbeitung aller HTML-Dateien für lokale Referenzen
+
+**Intelligente Pfad-Konvertierung:**
+- Root-Seiten: `./wp-content/uploads/image.jpg`
+- Unterseiten: `../wp-content/uploads/image.jpg`  
+- Tiefe Seiten: `../../wp-content/uploads/image.jpg`
+- Srcset-Attribute: `./image-300w.jpg 300w, ./image-150w.jpg 150w`
+
+**Erweiterte Cookiebot-Entfernung:**
+- Externe Cookiebot-Scripts (`cookiebot.com`)
+- Inline-Scripts mit >80% Cookiebot-Inhalt
+- Cookiebot-IDs, -Klassen und data-Attribute
+- Erhaltung funktionaler Navigation-Scripts
+
+**Weitere Verbesserungen:**
+- Query-Parameter-Behandlung (`style.css?ver=1.2.3`)
 - Deaktivierung von Kontaktformularen
 - Erhaltung der ursprünglichen Struktur und Formatierung
 
@@ -117,27 +132,43 @@ scraped_sites/
 7. **ZIP Download**: Download der kompletten statischen Site
 8. **Qualitätskontrolle**: Testen der Seiten vor dem finalen Deployment
 
-## Kürzliche Verbesserungen (v2.0)
+## Kürzliche Verbesserungen (v2.1)
 
-### ✅ Pfad-Korrekturen
-- **Problem behoben**: Assets hatten falsche relative Pfade auf Unterseiten
-- **Lösung**: Intelligente Tiefenberechnung für korrekte `../` Pfade
-- **Ergebnis**: Logos, CSS und Bilder laden nun korrekt auf allen Seiten
+### ✅ Zwei-Phasen Domain-Ersetzung
+- **Implementiert**: Vollständige Überarbeitung der Domain-Referenz-Behandlung
+- **Phase 1**: Alle Assets vollständig entdecken und herunterladen
+- **Phase 2**: HTML-Nachbearbeitung für lokale Pfad-Ersetzung
+- **Ergebnis**: 100% Domain-Referenzen durch relative Pfade ersetzt
 
-### ✅ Konflik-Resolution
-- **Problem behoben**: "Pfad-Konflikt erkannt" Meldungen eliminiert
-- **Lösung**: Bessere Unterscheidung zwischen Seiten und Assets
-- **Ergebnis**: Sauberes Scraping ohne Pfad-Kollisionen
+### ✅ Erweiterte Cookiebot-Entfernung
+- **Problem gelöst**: Cookiebot-Banner wurden nicht vollständig entfernt
+- **Neue Technik**: Aggressive Entfernung (85+ Elemente vs. vorher 6)
+- **Intelligente Filterung**: Navigations-JavaScript bleibt erhalten
+- **Ergebnis**: Vollständige Cookiebot-Entfernung ohne Funktionsverlust
 
-### ✅ UI-Verbesserungen
+### ✅ JavaScript-Navigation Schutz
+- **Problem behoben**: Navigation-Menüs funktionierten nach Scraping nicht
+- **Lösung**: Konservative Script-Analyse (nur >80% Cookiebot-Inhalt entfernt)
+- **Erhaltung**: Responsive Navigation und Hamburger-Menüs bleiben funktional
+- **Ergebnis**: Perfekte Navigation-Funktionalität in statischen Sites
+
+### ✅ Srcset-Unterstützung
+- **Neu**: Vollständige Responsive-Image-Unterstützung
+- **Funktion**: Alle Bildvarianten (300w, 150w, etc.) werden gefunden und heruntergeladen
+- **Relative Pfade**: Korrekte srcset-Verarbeitung für alle Seitenebenen
+- **Ergebnis**: Responsive Bilder funktionieren offline perfekt
+
+### ✅ Verbesserte Asset-Erkennung
+- **Enhancement**: Query-Parameter-Behandlung (style.css?ver=1.2.3)
+- **Intelligenz**: Dateierweiterung-basierte Asset-Erkennung
+- **Abdeckung**: CSS, JS, Bilder, Fonts, Videos vollständig unterstützt
+- **Ergebnis**: Keine fehlenden Assets mehr
+
+### ✅ UI & Workflow-Verbesserungen  
 - **Entfernt**: Defekte Preview-Buttons die nicht funktioniert haben
 - **Verbessert**: File-Browser als zentrale Navigation
-- **Ergebnis**: Intuitivere Benutzerführung mit funktionierender Navigation
-
-### ✅ Cookie-Banner Entfernung
-- **Neu**: Automatische Erkennung deutscher und englischer Cookie-Banner
-- **Umfang**: 20+ häufige Cookie-Plugin Patterns unterstützt
-- **Ergebnis**: Saubere statische Sites ohne störende Banner
+- **Workflow**: Klarer 8-Schritt-Prozess mit Qualitätskontrolle
+- **Ergebnis**: Intuitive Benutzerführung mit funktionierender Navigation
 
 ## Troubleshooting
 
