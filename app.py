@@ -10,7 +10,7 @@ from scraper import WordPressScraper
 import json
 import mimetypes
 from database import get_db, Project, ScrapingSession, ScrapingLog
-from screenshot_service import generate_project_screenshot_sync, generate_local_project_screenshot_sync
+from screenshot_service import generate_project_screenshot_sync, generate_local_project_screenshot_sync, screenshot_service
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'wordpress-scraper-secret-key'
@@ -296,6 +296,13 @@ def delete_project(project_id):
     if not project:
         return jsonify({'error': 'Project not found'}), 404
     
+    # Delete project screenshots first
+    try:
+        screenshot_service.cleanup_project_screenshots(project_id)
+        print(f"Cleaned up screenshots for project {project_id}")
+    except Exception as e:
+        print(f"Error deleting project screenshots: {e}")
+    
     # Delete project files if they exist
     try:
         parsed_url = urlparse(project.url)
@@ -304,6 +311,7 @@ def delete_project(project_id):
         
         if os.path.exists(domain_dir):
             shutil.rmtree(domain_dir)
+            print(f"Deleted project files: {domain_dir}")
     except Exception as e:
         print(f"Error deleting project files: {e}")
     
@@ -347,6 +355,9 @@ def regenerate_screenshot(project_id):
         return jsonify({'error': 'Project not found'}), 404
     
     try:
+        # Clean up old screenshots first
+        screenshot_service.cleanup_project_screenshots(project_id)
+        
         # Try to find the latest scraped version first
         parsed_url = urlparse(project.url)
         domain = parsed_url.netloc.replace('www.', '')
