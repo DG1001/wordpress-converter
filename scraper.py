@@ -290,13 +290,24 @@ class WordPressScraper:
             script.decompose()
             removed_count += 1
             
-        # 2. Remove ANY script that mentions Cookiebot (be aggressive)
+        # 2. Remove scripts that are CLEARLY pure Cookiebot (be very conservative)
         all_scripts = soup.find_all('script')
         for script in all_scripts:
             script_content = script.get_text()
             if script_content and 'cookiebot' in script_content.lower():
-                script.decompose()
-                removed_count += 1
+                # Only remove if the script is almost entirely Cookiebot code
+                lines = [line.strip() for line in script_content.strip().split('\n') if line.strip()]
+                cookiebot_lines = [line for line in lines if 'cookiebot' in line.lower()]
+                
+                # Calculate percentage of Cookiebot content
+                if len(lines) > 0:
+                    cookiebot_percentage = len(cookiebot_lines) / len(lines)
+                    
+                    # Only remove if >80% of meaningful lines contain 'cookiebot'
+                    if cookiebot_percentage > 0.8:
+                        script.decompose()
+                        removed_count += 1
+                    # Otherwise, leave the script completely untouched to preserve navigation
                 
         # 3. Remove elements with Cookiebot IDs or classes
         cookiebot_elements = soup.find_all(id=lambda x: x and 'cookiebot' in x.lower())
@@ -1020,11 +1031,13 @@ class WordPressScraper:
         invalid_paths = [
             '/wp-json/',
             '/wp-admin/',
-            '?',  # Query parameters usually indicate dynamic content
             '/feed/',
             '/xmlrpc.php',
             '/wp-login.php'
         ]
+        
+        # Don't exclude query parameters for CSS/JS files as they often have version numbers
+        # like style.css?ver=1.2.3 which are important for cache busting
         
         # Check if it has a clear asset extension
         asset_extensions = [
