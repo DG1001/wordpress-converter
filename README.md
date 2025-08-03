@@ -1,194 +1,220 @@
 # WordPress to Static Site Converter
 
-Eine einfache aber funktionale Flask-Webanwendung, die WordPress-Websites vollständig als statische Kopien erfasst.
+A comprehensive Flask web application that converts WordPress websites into fully functional static copies with advanced asset handling and cookie banner removal.
+
+*🤖 This application was developed using [XaresAICoder](https://github.com/DG1001/XaresAICoder) and Claude Code*
+
+📖 **[Deutsche Dokumentation](README_de.md)** | 🌍 **English Documentation**
 
 ## Features
 
-- 🌐 **Vollständige Website-Erfassung**: Alle öffentlichen Seiten, Posts und Kategorien
-- 📱 **Asset-Download**: Automatisches Herunterladen von Bildern, CSS, JavaScript und Fonts
-- 🔗 **Zwei-Phasen Domain-Ersetzung**: 100% Konvertierung zu relativen Pfaden
-- 📱 **Srcset-Unterstützung**: Responsive Bilder mit allen Auflösungsvarianten
-- 🚫 **Erweiterte Cookiebot-Entfernung**: Vollständige Banner-Entfernung (85+ Elemente)
-- ⚙️ **JavaScript-Navigation Schutz**: Erhaltung funktionaler Website-Navigation
-- 📊 **Live-Fortschritt**: Echtzeit-Updates während des Scraping-Prozesses
-- 📁 **File-Browser**: Navigation durch die komplette Website-Struktur
-- 📦 **ZIP-Export**: Download der kompletten statischen Website
-- 🎨 **Responsive Design**: Moderne UI mit TailwindCSS
-- ⚡ **Query-Parameter Support**: Korrekte Behandlung von CSS/JS-Versionierung
+- 🌐 **Complete Website Capture**: All public pages, posts, and categories
+- 📱 **Asset Download**: Automatic download of images, CSS, JavaScript, and fonts
+- 🔗 **Two-Phase Domain Replacement**: 100% conversion to relative paths
+- 📱 **Srcset Support**: Responsive images with all resolution variants
+- 🚫 **Advanced Cookiebot Removal**: Complete banner removal (85+ elements)
+- ⚙️ **JavaScript Navigation Protection**: Preserves functional website navigation
+- 📊 **Live Progress**: Real-time updates during scraping process
+- 📁 **File Browser**: Navigate through complete website structure
+- 📦 **ZIP Export**: Download complete static website
+- 🎨 **Responsive Design**: Modern UI with TailwindCSS
+- ⚡ **Query Parameter Support**: Correct handling of CSS/JS versioning
 
 ## Installation
 
-1. **Repository klonen oder herunterladen**
-
-2. **Virtuelle Umgebung erstellen (empfohlen)**
+1. **Clone or download the repository**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # oder
-   venv\Scripts\activate     # Windows
+   git clone <repository-url>
+   cd wordpress-static-converter
    ```
 
-3. **Dependencies installieren**
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Playwright Browser installieren**
+3. **Install Playwright browser**
    ```bash
    playwright install chromium
    ```
 
-## Verwendung
-
-1. **Anwendung starten**
+4. **Start the application**
    ```bash
    python app.py
    ```
 
-2. **Browser öffnen**
-   - Navigieren Sie zu: `http://localhost:5000`
+5. **Open in browser**
+   ```
+   http://localhost:5000
+   ```
 
-3. **WordPress-Site scrapen**
-   - URL eingeben (z.B. `https://beispiel-wordpress-site.com`)
-   - "Scraping starten" klicken
-   - Fortschritt live verfolgen
-   - ZIP-Datei herunterladen
+## How It Works
 
-## Technischer Stack
+### 1. URL Discovery
+- Automatic sitemap parsing (`sitemap.xml`, `wp-sitemap.xml`)
+- Link extraction from homepage and discovered pages
+- WordPress-specific URL patterns recognition
+- Intelligent filtering of admin and API endpoints
 
-- **Backend**: Python 3.11+, Flask, Flask-SocketIO
-- **Frontend**: TailwindCSS (CDN), Vanilla JavaScript
-- **Scraping**: Playwright (Chromium)
-- **Parsing**: BeautifulSoup4
-- **Storage**: Dateisystem
+### 2. Asset Collection
+- JavaScript-enabled scraping with Playwright
+- Comprehensive asset detection (images, CSS, JS, fonts, videos)
+- Srcset processing for responsive images
+- Download of all media files within domain
+- HTML path adjustment for local navigation
+- Preservation of original folder structure
 
-## Funktionsweise
+### 3. HTML Processing & Domain Replacement
 
-### 1. URL-Discovery
-- Prüfung der Sitemap.xml (falls vorhanden)
-- Rekursive Erfassung interner Links
-- Vermeidung von Dubletten
+**Two-Phase Approach:**
+- **Phase 1**: Complete asset discovery and download
+- **Phase 2**: Post-processing of all HTML files for local references
 
-### 2. Asset-Handling
-- Download aller Medien-Dateien innerhalb der Domain
-- Anpassung der HTML-Pfade für lokale Navigation
-- Erhaltung der ursprünglichen Ordnerstruktur
+**Intelligent Path Conversion:**
+- Root pages: `./wp-content/uploads/image.jpg`
+- Sub pages: `../wp-content/uploads/image.jpg`  
+- Deep pages: `../../wp-content/uploads/image.jpg`
+- Srcset attributes: `./image-300w.jpg 300w, ./image-150w.jpg 150w`
 
-### 3. HTML-Processing & Domain-Ersetzung
+**Advanced Cookiebot Removal:**
+- External Cookiebot scripts (`cookiebot.com`)
+- Inline scripts with >80% Cookiebot content
+- Cookiebot IDs, classes, and data attributes
+- Preservation of functional navigation scripts
 
-**Zwei-Phasen-Ansatz:**
-- **Phase 1**: Vollständige Asset-Entdeckung und Download
-- **Phase 2**: Nachbearbeitung aller HTML-Dateien für lokale Referenzen
+**Additional Improvements:**
+- Query parameter handling (`style.css?ver=1.2.3`)
+- Contact form deactivation
+- Preservation of original structure and formatting
 
-**Intelligente Pfad-Konvertierung:**
-- Root-Seiten: `./wp-content/uploads/image.jpg`
-- Unterseiten: `../wp-content/uploads/image.jpg`  
-- Tiefe Seiten: `../../wp-content/uploads/image.jpg`
-- Srcset-Attribute: `./image-300w.jpg 300w, ./image-150w.jpg 150w`
-
-**Erweiterte Cookiebot-Entfernung:**
-- Externe Cookiebot-Scripts (`cookiebot.com`)
-- Inline-Scripts mit >80% Cookiebot-Inhalt
-- Cookiebot-IDs, -Klassen und data-Attribute
-- Erhaltung funktionaler Navigation-Scripts
-
-**Weitere Verbesserungen:**
-- Query-Parameter-Behandlung (`style.css?ver=1.2.3`)
-- Deaktivierung von Kontaktformularen
-- Erhaltung der ursprünglichen Struktur und Formatierung
-
-## Ausgabestruktur
+## Output Structure
 
 ```
-scraped_sites/
-└── domain-name/
-    └── timestamp/
-        ├── index.html
-        ├── page/
-        │   └── index.html
-        ├── wp-content/
-        │   └── uploads/
-        │       └── images...
-        └── wp-includes/
-            └── assets...
+scraped_site/
+├── index.html
+├── about/
+│   └── index.html
+├── wp-content/
+│   ├── themes/
+│   │   └── theme-name/
+│   │       ├── style.css
+│   │       └── assets/
+│   └── uploads/
+│       └── 2024/
+│           └── images/
+└── other-pages/
+    └── index.html
 ```
 
-## Einschränkungen
+## Limitations
 
-- Nur öffentlich zugängliche Inhalte werden erfasst
-- Kontaktformulare werden deaktiviert (keine serverseitige Verarbeitung)
-- Such-Funktionen funktionieren nicht (benötigen Datenbank)
-- Kommentar-Systeme sind nicht funktional
-- WordPress-Admin-Bereich ist nicht enthalten
+- Only captures publicly accessible content
+- Dynamic content requiring database queries is not included
+- Contact forms are deactivated for static use
+- WordPress admin area is not included
 
-## Beispiel-Workflow
+## Example Workflow
 
-1. Benutzer öffnet `http://localhost:5000`
-2. Gibt WordPress-URL ein: `https://demo-wordpress-site.com`
-3. Klickt "Scraping starten"
-4. Sieht Live-Fortschritt der Erfassung mit detaillierten Logs
-5. Nach Abschluss: Ergebnis-Seite mit Statistiken
-6. **Browse Files**: Navigation durch die Website-Struktur im Browser
-7. **ZIP Download**: Download der kompletten statischen Site
-8. **Qualitätskontrolle**: Testen der Seiten vor dem finalen Deployment
+1. User opens `http://localhost:5000`
+2. Enters WordPress URL: `https://example-wordpress-site.com`
+3. Clicks "Start Scraping"
+4. Views live progress with detailed logs
+5. After completion: Results page with statistics
+6. **Browse Files**: Navigate through website structure in browser
+7. **ZIP Download**: Download complete static site
+8. **Quality Control**: Test pages before final deployment
 
-## Kürzliche Verbesserungen (v2.1)
+## Recent Improvements (v2.1)
 
-### ✅ Zwei-Phasen Domain-Ersetzung
-- **Implementiert**: Vollständige Überarbeitung der Domain-Referenz-Behandlung
-- **Phase 1**: Alle Assets vollständig entdecken und herunterladen
-- **Phase 2**: HTML-Nachbearbeitung für lokale Pfad-Ersetzung
-- **Ergebnis**: 100% Domain-Referenzen durch relative Pfade ersetzt
+### ✅ Two-Phase Domain Replacement
+- **Implemented**: Complete overhaul of domain reference handling
+- **Phase 1**: Discover and download all assets completely
+- **Phase 2**: HTML post-processing for local path replacement
+- **Result**: 100% domain references replaced with relative paths
 
-### ✅ Erweiterte Cookiebot-Entfernung
-- **Problem gelöst**: Cookiebot-Banner wurden nicht vollständig entfernt
-- **Neue Technik**: Aggressive Entfernung (85+ Elemente vs. vorher 6)
-- **Intelligente Filterung**: Navigations-JavaScript bleibt erhalten
-- **Ergebnis**: Vollständige Cookiebot-Entfernung ohne Funktionsverlust
+### ✅ Advanced Cookiebot Removal
+- **Problem Solved**: Cookiebot banners were not completely removed
+- **New Technique**: Aggressive removal (85+ elements vs. previous 6)
+- **Intelligent Filtering**: Navigation JavaScript remains functional
+- **Result**: Complete Cookiebot removal without functionality loss
 
-### ✅ JavaScript-Navigation Schutz
-- **Problem behoben**: Navigation-Menüs funktionierten nach Scraping nicht
-- **Lösung**: Konservative Script-Analyse (nur >80% Cookiebot-Inhalt entfernt)
-- **Erhaltung**: Responsive Navigation und Hamburger-Menüs bleiben funktional
-- **Ergebnis**: Perfekte Navigation-Funktionalität in statischen Sites
+### ✅ JavaScript Navigation Protection
+- **Problem Fixed**: Navigation menus didn't work after scraping
+- **Solution**: Conservative script analysis (only >80% Cookiebot content removed)
+- **Preservation**: Responsive navigation and hamburger menus remain functional
+- **Result**: Perfect navigation functionality in static sites
 
-### ✅ Srcset-Unterstützung
-- **Neu**: Vollständige Responsive-Image-Unterstützung
-- **Funktion**: Alle Bildvarianten (300w, 150w, etc.) werden gefunden und heruntergeladen
-- **Relative Pfade**: Korrekte srcset-Verarbeitung für alle Seitenebenen
-- **Ergebnis**: Responsive Bilder funktionieren offline perfekt
+### ✅ Srcset Support
+- **New**: Complete responsive image support
+- **Function**: All image variants (300w, 150w, etc.) found and downloaded
+- **Relative Paths**: Correct srcset processing for all page levels
+- **Result**: Responsive images work perfectly offline
 
-### ✅ Verbesserte Asset-Erkennung
-- **Enhancement**: Query-Parameter-Behandlung (style.css?ver=1.2.3)
-- **Intelligenz**: Dateierweiterung-basierte Asset-Erkennung
-- **Abdeckung**: CSS, JS, Bilder, Fonts, Videos vollständig unterstützt
-- **Ergebnis**: Keine fehlenden Assets mehr
+### ✅ Enhanced Asset Recognition
+- **Enhancement**: Query parameter handling (style.css?ver=1.2.3)
+- **Intelligence**: File extension-based asset recognition
+- **Coverage**: CSS, JS, images, fonts, videos fully supported
+- **Result**: No missing assets anymore
 
-### ✅ UI & Workflow-Verbesserungen  
-- **Entfernt**: Defekte Preview-Buttons die nicht funktioniert haben
-- **Verbessert**: File-Browser als zentrale Navigation
-- **Workflow**: Klarer 8-Schritt-Prozess mit Qualitätskontrolle
-- **Ergebnis**: Intuitive Benutzerführung mit funktionierender Navigation
+### ✅ UI & Workflow Improvements  
+- **Removed**: Broken preview buttons that didn't work
+- **Improved**: File browser as central navigation
+- **Workflow**: Clear 8-step process with quality control
+- **Result**: Intuitive user guidance with working navigation
 
 ## Troubleshooting
 
 ### Playwright Installation
-Falls Playwright-Fehler auftreten:
+If Playwright errors occur:
 ```bash
 playwright install --force chromium
 ```
 
-### Port bereits in Verwendung
-Falls Port 5000 bereits belegt ist, ändern Sie in `app.py`:
+### Large Websites
+For large sites, increase timeout values in `scraper.py`:
 ```python
-socketio.run(app, debug=True, host='0.0.0.0', port=5001)
+page.set_default_timeout(60000)  # 60 seconds
 ```
 
-### Performance
-- Größere Websites können länger dauern
-- Bei sehr großen Sites ggf. Timeout erhöhen
-- Scraping ist automatisch "respectful" (0.5s Pause zwischen Requests)
+### Memory Issues
+For memory-intensive sites:
+```bash
+export PYTHONHASHSEED=0
+python app.py
+```
 
-## Lizenz
+## Development
 
-MIT License - Frei für private und kommerzielle Nutzung.
+This application was developed using:
+- **[XaresAICoder](https://github.com/DG1001/XaresAICoder)**: AI-powered development environment
+- **Claude Code**: Advanced AI coding assistant
+- **Collaborative AI Development**: Iterative improvement through AI-human collaboration
+
+### Technology Stack
+- **Backend**: Flask with SocketIO for real-time communication
+- **Scraping**: Playwright for JavaScript-enabled browsing
+- **HTML Processing**: BeautifulSoup for content manipulation
+- **Frontend**: TailwindCSS for responsive design
+- **Asset Handling**: Custom logic for WordPress-specific patterns
+
+### Key Technical Innovations
+- Two-phase domain replacement architecture
+- Conservative JavaScript filtering for navigation preservation
+- Intelligent asset validation with conflict resolution
+- Real-time progress tracking with WebSocket communication
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Test thoroughly with real WordPress sites
+4. Submit a pull request with detailed description
+
+## License
+
+This project is open source. Please check the license file for details.
+
+---
+
+*Developed with ❤️ using AI-powered development tools*
