@@ -73,7 +73,12 @@ class WordPressScraper:
                 
                 # Post-process all HTML files to replace domain references with local paths
                 self.log("Verarbeite Domain-Referenzen...")
-                self.post_process_domain_references()
+                try:
+                    self.post_process_domain_references()
+                except Exception as e:
+                    self.log(f"Fehler bei Domain-Referenz-Verarbeitung: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 self.update_progress({'completed_pages': len(self.visited_urls)})
                 self.log(f"Scraping abgeschlossen: {len(self.visited_urls)} Seiten gespeichert")
@@ -278,21 +283,40 @@ class WordPressScraper:
         """Remove common cookie banner elements from the HTML"""
         removed_count = 0
         
-        # Remove Cookiebot scripts specifically
+        # Remove ALL Cookiebot-related scripts and elements
+        # 1. Remove external Cookiebot scripts
         cookiebot_scripts = soup.find_all('script', src=lambda x: x and 'cookiebot.com' in x)
         for script in cookiebot_scripts:
             script.decompose()
             removed_count += 1
             
-        # Remove inline scripts that are clearly cookie-related (be more specific)
-        inline_scripts = soup.find_all('script', src=False)
-        for script in inline_scripts:
-            script_content = script.get_text().lower()
-            # Only remove if it's clearly a cookie banner script, not general scripts that mention cookies
-            if any(term in script_content for term in ['cookiebot', 'CookieConsent', 'cc.js', 'cookie-banner']) and \
-               len(script_content) < 5000:  # Avoid removing large scripts
+        # 2. Remove ANY script that mentions Cookiebot (be aggressive)
+        all_scripts = soup.find_all('script')
+        for script in all_scripts:
+            script_content = script.get_text()
+            if script_content and 'cookiebot' in script_content.lower():
                 script.decompose()
                 removed_count += 1
+                
+        # 3. Remove elements with Cookiebot IDs or classes
+        cookiebot_elements = soup.find_all(id=lambda x: x and 'cookiebot' in x.lower())
+        for element in cookiebot_elements:
+            element.decompose()
+            removed_count += 1
+            
+        cookiebot_class_elements = soup.find_all(class_=lambda x: x and any('cookiebot' in cls.lower() for cls in x if isinstance(cls, str)))
+        for element in cookiebot_class_elements:
+            element.decompose()
+            removed_count += 1
+            
+        # 4. Remove elements with data-cookiebot attributes
+        for element in soup.find_all():
+            if element.attrs:
+                for attr_name in list(element.attrs.keys()):
+                    if attr_name.startswith('data-cookiebot'):
+                        element.decompose()
+                        removed_count += 1
+                        break
         
         # Common cookie banner selectors (ID and class patterns)
         cookie_selectors = [
@@ -525,15 +549,16 @@ class WordPressScraper:
                     current_page_url = self.base_url
             
             # Replace domain references in all relevant attributes
-            for element in soup.find_all(attrs=True):
-                for attr_name, attr_value in list(element.attrs.items()):
-                    if isinstance(attr_value, str) and any(domain_var in attr_value for domain_var in domain_variants):
-                        original_value = attr_value
-                        modified_value = self.replace_domain_in_attribute(attr_value, current_page_url, domain_variants)
-                        
-                        if modified_value != original_value:
-                            element[attr_name] = modified_value
-                            replacements_in_file += 1
+            for element in soup.find_all():
+                if element.attrs:
+                    for attr_name, attr_value in list(element.attrs.items()):
+                        if isinstance(attr_value, str) and any(domain_var in attr_value for domain_var in domain_variants):
+                            original_value = attr_value
+                            modified_value = self.replace_domain_in_attribute(attr_value, current_page_url, domain_variants)
+                            
+                            if modified_value != original_value:
+                                element[attr_name] = modified_value
+                                replacements_in_file += 1
             
             # Also process text content of script and other elements
             for element in soup.find_all(['script', 'style']):
@@ -670,8 +695,18 @@ class WordPressScraper:
                     url = parts[0]
                     sizes = parts[1:] if len(parts) > 1 else []
                     
-                    # Check if this URL needs domain replacement
-                    modified_url = self.replace_domain_in_attribute(url, current_page_url, domain_variants)
+                    # Check if this URL needs domain replacement (but preserve it as an asset URL)
+                    if any(domain_var in url for domain_var in domain_variants):
+                        # For srcset, we want to convert to relative paths without adding /index.html
+                        if self.is_known_local_resource(url):
+                            try:
+                                modified_url = self.convert_to_relative_path(url, current_page_url)
+                            except:
+                                modified_url = url
+                        else:
+                            modified_url = url
+                    else:
+                        modified_url = url
                     
                     if sizes:
                         srcset_items.append(f"{modified_url} {' '.join(sizes)}")
@@ -816,7 +851,11 @@ class WordPressScraper:
             '.mp4', '.avi', '.mov', '.mp3', '.wav',  # Media
             '.xml', '.json', '.txt'  # Data files
         ]):
-            return relative_prefix + target_path.strip('/')
+            # For assets, just use the relative prefix + path, no /index.html
+            result = relative_prefix + target_path.strip('/')
+            # Clean up double dots/slashes
+            result = result.replace('//', '/').replace('.//', './')
+            return result
         
         # Regular page - treat as directory with index.html
         if target_path.endswith('.html') or target_path.endswith('.htm'):
