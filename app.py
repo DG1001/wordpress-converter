@@ -31,11 +31,6 @@ scraping_progress = {
 def index():
     return render_template('index.html')
 
-@app.route('/projects')
-def projects():
-    """Projects dashboard"""
-    return render_template('projects.html')
-
 @app.route('/start_scraping', methods=['POST'])
 def start_scraping():
     url = request.form.get('url', '').strip()

@@ -65,7 +65,7 @@ class ScreenshotService:
                 logger.info(f"Screenshot saved: {screenshot_path}")
                 logger.info(f"Thumbnail saved: {thumbnail_path}")
                 
-                return str(thumbnail_path.relative_to('static'))
+                return f"static/{thumbnail_path.relative_to('static')}"
                 
         except Exception as e:
             logger.error(f"Error capturing screenshot for {url}: {e}")
@@ -102,7 +102,7 @@ class ScreenshotService:
                 # Generate thumbnail
                 thumbnail_path = await self.generate_thumbnail(screenshot_path, project_id)
                 
-                return str(thumbnail_path.relative_to('static'))
+                return f"static/{thumbnail_path.relative_to('static')}"
                 
         except Exception as e:
             logger.error(f"Error capturing local screenshot: {e}")
@@ -222,11 +222,11 @@ class ScreenshotService:
             thumbnail_path = self.screenshots_dir / thumbnail_filename
             img.save(thumbnail_path, 'PNG', optimize=True)
             
-            return str(thumbnail_path.relative_to('static'))
+            return f"static/{thumbnail_path.relative_to('static')}"
             
         except Exception as e:
             logger.error(f"Error generating fallback thumbnail: {e}")
-            return "screenshots/default.png"  # Return default path
+            return "static/screenshots/default.png"  # Return default path
     
     def cleanup_project_screenshots(self, project_id: int):
         """Clean up all screenshots for a project"""
