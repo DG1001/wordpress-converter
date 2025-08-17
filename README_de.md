@@ -19,6 +19,9 @@ Eine umfassende Flask-Webanwendung, die WordPress-Websites in vollständig funkt
 - 📦 **ZIP-Export**: Download der kompletten statischen Website
 - 🎨 **Responsive Design**: Moderne UI mit TailwindCSS
 - ⚡ **Query-Parameter Support**: Korrekte Behandlung von CSS/JS-Versionierung
+- 🤖 **KI-gestützte Bearbeitung**: Bearbeitung gescrapeter Websites mit KI (DeepSeek Integration)
+- 📚 **Projekt-Management**: Professionelles Dashboard mit Thumbnails und Favoriten
+- 📸 **Automatische Screenshots**: Visuelle Vorschau gescrapeter Websites
 
 ## Installation
 
@@ -40,6 +43,12 @@ Eine umfassende Flask-Webanwendung, die WordPress-Websites in vollständig funkt
 4. **Playwright Browser installieren**
    ```bash
    playwright install chromium
+   ```
+
+5. **KI-Bearbeitung konfigurieren (optional)**
+   ```bash
+   # .env Datei erstellen und DeepSeek API Key hinzufügen
+   echo "DEEPSEEK_API_KEY=ihr_api_key_hier" >> .env
    ```
 
 ## Verwendung
@@ -135,6 +144,46 @@ scraped_sites/
 6. **Browse Files**: Navigation durch die Website-Struktur im Browser
 7. **ZIP Download**: Download der kompletten statischen Site
 8. **Qualitätskontrolle**: Testen der Seiten vor dem finalen Deployment
+
+## KI-gestützte Website-Bearbeitung
+
+Die Anwendung enthält jetzt eine KI-gestützte Bearbeitungsfunktion, mit der Sie gescrapete Websites mit natürlichsprachlichen Prompts bearbeiten können.
+
+### Features
+- **Natürlichsprachliche Befehle**: Beschreiben Sie Änderungen in einfachem Deutsch (z.B. "mache den Header moderner")
+- **Intelligente Code-Analyse**: KI analysiert HTML/CSS-Struktur und wendet passende Änderungen an
+- **Versionskontrolle**: Alle Änderungen werden mit Git-Commits verfolgt
+- **Änderungshistorie**: Zeigen Sie alle Modifikationen mit Zeitstempeln und Commit-Nachrichten an
+- **File-Browser**: Navigation durch Website-Struktur während der Bearbeitung
+
+### Verwendung
+1. **Website scrapen**: Scrapen Sie zuerst eine Website mit der Hauptfunktion
+2. **Editor öffnen**: Klicken Sie "Mit KI bearbeiten" auf der Vorschau-Seite
+3. **Prompt eingeben**: Beschreiben Sie gewünschte Änderungen im Textfeld
+4. **Änderungen generieren**: KI analysiert den Code und wendet Modifikationen an
+5. **Historie ansehen**: Betrachten Sie alle Änderungen im Historie-Panel
+
+### Konfiguration
+Um KI-Bearbeitung zu aktivieren, fügen Sie Ihren DeepSeek API-Schlüssel zur `.env` Datei hinzu:
+```bash
+DEEPSEEK_API_KEY=ihr_deepseek_api_key_hier
+```
+
+### Beispiel-Prompts
+- "Mache die Website moderner mit einem dunklen Thema"
+- "Ändere den Header-Hintergrund zu blau"
+- "Füge abgerundete Ecken zu allen Buttons hinzu"
+- "Verbessere die mobile Responsivität"
+- "Aktualisiere die Typographie für eine professionellere Schrift"
+
+## Projekt-Management Dashboard
+
+Professionelles Projekt-Management-Interface mit:
+- **Visuelle Thumbnails**: Automatische Screenshots gescrapeter Websites
+- **Favoriten-System**: Wichtige Projekte für schnellen Zugriff markieren
+- **Such-Funktionalität**: Projekte nach Name oder URL finden
+- **Projekt-Statistiken**: Scraping-Statistiken und Dateigrößen anzeigen
+- **Session-Historie**: Alle Scraping-Sessions pro Projekt verfolgen
 
 ## Kürzliche Verbesserungen (v2.1)
 

@@ -19,6 +19,9 @@ A comprehensive Flask web application that converts WordPress websites into full
 - 📦 **ZIP Export**: Download complete static website
 - 🎨 **Responsive Design**: Modern UI with TailwindCSS
 - ⚡ **Query Parameter Support**: Correct handling of CSS/JS versioning
+- 🤖 **AI-Powered Editing**: Edit scraped websites using AI (DeepSeek integration)
+- 📚 **Project Management**: Professional dashboard with thumbnails and favorites
+- 📸 **Automatic Screenshots**: Visual previews of scraped websites
 
 ## Installation
 
@@ -38,12 +41,18 @@ A comprehensive Flask web application that converts WordPress websites into full
    playwright install chromium
    ```
 
-4. **Start the application**
+4. **Configure AI editing (optional)**
+   ```bash
+   # Create .env file and add your DeepSeek API key
+   echo "DEEPSEEK_API_KEY=your_api_key_here" >> .env
+   ```
+
+5. **Start the application**
    ```bash
    python app.py
    ```
 
-5. **Open in browser**
+6. **Open in browser**
    ```
    http://localhost:5000
    ```
@@ -123,6 +132,46 @@ scraped_site/
 6. **Browse Files**: Navigate through website structure in browser
 7. **ZIP Download**: Download complete static site
 8. **Quality Control**: Test pages before final deployment
+
+## AI-Powered Website Editing
+
+The application now includes an AI-powered editing feature that allows you to modify scraped websites using natural language prompts.
+
+### Features
+- **Natural Language Commands**: Describe changes in plain English (e.g., "make the header more modern")
+- **Intelligent Code Analysis**: AI analyzes HTML/CSS structure and applies appropriate changes
+- **Version Control**: All changes are tracked with Git commits
+- **Change History**: View all modifications with timestamps and commit messages
+- **File Browser**: Navigate through website structure during editing
+
+### Usage
+1. **Scrape a Website**: First, scrape any website using the main functionality
+2. **Access Editor**: Click "Edit with AI" from the preview page
+3. **Enter Prompt**: Describe your desired changes in the text area
+4. **Generate Changes**: AI will analyze the code and apply modifications
+5. **Review History**: View all changes in the history panel
+
+### Configuration
+To enable AI editing, add your DeepSeek API key to the `.env` file:
+```bash
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+```
+
+### Example Prompts
+- "Make the website more modern with a dark theme"
+- "Change the header background to blue"
+- "Add rounded corners to all buttons"
+- "Improve the mobile responsiveness"
+- "Update the typography to use a more professional font"
+
+## Project Management Dashboard
+
+Professional project management interface with:
+- **Visual Thumbnails**: Automatic screenshots of scraped websites
+- **Favorites System**: Mark important projects for quick access
+- **Search Functionality**: Find projects by name or URL
+- **Project Statistics**: View scraping statistics and file sizes
+- **Session History**: Track all scraping sessions per project
 
 ## Recent Improvements (v2.1)
 
