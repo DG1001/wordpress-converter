@@ -105,26 +105,53 @@ class AIConfig:
     
     def __init__(self, config_file: Optional[str] = None):
         self.config_file = config_file or "ai_config.json"
+        self.template_file = "ai_config.template.json"
+        self.local_file = "ai_config.local.json"
         self.config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration from file or use defaults"""
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r') as f:
-                    config = json.load(f)
-                logger.info(f"Loaded AI config from {self.config_file}")
-                return self._merge_with_defaults(config)
-            except Exception as e:
-                logger.warning(f"Failed to load config file {self.config_file}: {e}")
-        
-        logger.info("Using default AI configuration")
-        return {
+        """Load configuration from template and local files"""
+        # Start with defaults
+        config = {
             "providers": self.DEFAULT_CONFIG.copy(),
             "memory": self.MEMORY_CONFIG.copy(),
             "workflow": self.WORKFLOW_CONFIG.copy(),
             "active_provider": "deepseek"
         }
+        
+        # Load template config (static settings)
+        if os.path.exists(self.template_file):
+            try:
+                with open(self.template_file, 'r') as f:
+                    template_config = json.load(f)
+                config = self._merge_with_defaults(template_config)
+                logger.info(f"Loaded template config from {self.template_file}")
+            except Exception as e:
+                logger.warning(f"Failed to load template config {self.template_file}: {e}")
+        
+        # Load local config (user settings like active_provider)
+        if os.path.exists(self.local_file):
+            try:
+                with open(self.local_file, 'r') as f:
+                    local_config = json.load(f)
+                # Merge local settings (active_provider, etc.)
+                if "active_provider" in local_config:
+                    config["active_provider"] = local_config["active_provider"]
+                logger.info(f"Loaded local config from {self.local_file}")
+            except Exception as e:
+                logger.warning(f"Failed to load local config {self.local_file}: {e}")
+        
+        # Fallback to old config file if new files don't exist
+        elif os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    old_config = json.load(f)
+                config = self._merge_with_defaults(old_config)
+                logger.info(f"Loaded legacy config from {self.config_file}")
+            except Exception as e:
+                logger.warning(f"Failed to load config file {self.config_file}: {e}")
+        
+        return config
     
     def _merge_with_defaults(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Merge user config with defaults"""
@@ -153,14 +180,19 @@ class AIConfig:
         return default_config
     
     def save_config(self) -> bool:
-        """Save current configuration to file"""
+        """Save user-specific configuration to local file"""
         try:
-            with open(self.config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
-            logger.info(f"Saved AI config to {self.config_file}")
+            # Only save user-specific settings to local file
+            local_config = {
+                "active_provider": self.config.get("active_provider", "deepseek")
+            }
+            
+            with open(self.local_file, 'w') as f:
+                json.dump(local_config, f, indent=2)
+            logger.info(f"Saved user config to {self.local_file}")
             return True
         except Exception as e:
-            logger.error(f"Failed to save config: {e}")
+            logger.error(f"Failed to save local config: {e}")
             return False
     
     def get_provider_config(self, provider_name: str) -> Optional[Dict[str, Any]]:

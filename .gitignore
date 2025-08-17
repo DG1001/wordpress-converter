@@ -34,3 +34,6 @@ CLAUDE.md
 static/screenshots/
 ai_features/data/
 
+# AI Configuration - exclude user-specific settings
+ai_config.local.json
+
