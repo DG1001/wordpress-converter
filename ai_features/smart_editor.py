@@ -446,7 +446,14 @@ class SmartEditor:
                 new_content = content.replace(operation.target_content, operation.new_content)
                 lines_changed = abs(len(new_content.split('\n')) - len(original_lines))
             else:
-                raise Exception(f"Target content not found in file")
+                # Try fuzzy matching for HTML content
+                fuzzy_match = self._find_fuzzy_match(content, operation.target_content)
+                if fuzzy_match:
+                    new_content = content.replace(fuzzy_match, operation.new_content)
+                    lines_changed = abs(len(new_content.split('\n')) - len(original_lines))
+                    logger.info(f"Used fuzzy match: '{fuzzy_match}' -> '{operation.new_content}'")
+                else:
+                    raise Exception(f"Target content not found in file: '{operation.target_content}'")
         
         elif operation.operation_type == 'insert':
             # Insert after target content
@@ -457,7 +464,14 @@ class SmartEditor:
                 )
                 lines_changed = len(operation.new_content.split('\n')) - 1
             else:
-                raise Exception(f"Target content not found in file")
+                # Try fuzzy matching for insertion
+                fuzzy_match = self._find_fuzzy_match(content, operation.target_content)
+                if fuzzy_match:
+                    new_content = content.replace(fuzzy_match, fuzzy_match + operation.new_content)
+                    lines_changed = len(operation.new_content.split('\n')) - 1
+                    logger.info(f"Used fuzzy match for insert: '{fuzzy_match}'")
+                else:
+                    raise Exception(f"Target content not found in file: '{operation.target_content}'")
         
         elif operation.operation_type == 'append':
             # Append to end of file
@@ -487,6 +501,48 @@ class SmartEditor:
             lines_changed=lines_changed,
             backup_created=bool(operation.backup_path)
         )
+    
+    def _find_fuzzy_match(self, content: str, target: str) -> Optional[str]:
+        """Find fuzzy match for target content in HTML"""
+        import re
+        
+        # Normalize whitespace for comparison
+        def normalize_whitespace(text):
+            return re.sub(r'\s+', ' ', text.strip())
+        
+        target_normalized = normalize_whitespace(target)
+        
+        # Strategy 1: Look for partial matches with normalized whitespace
+        content_lines = content.split('\n')
+        for line in content_lines:
+            line_normalized = normalize_whitespace(line)
+            if target_normalized in line_normalized:
+                return line.strip()
+        
+        # Strategy 2: Look for HTML tag patterns
+        if '<' in target and '>' in target:
+            # Extract tag name
+            tag_match = re.search(r'<(/?\w+)', target)
+            if tag_match:
+                tag_name = tag_match.group(1)
+                # Find similar tags in content
+                tag_pattern = rf'<{re.escape(tag_name)}[^>]*>'
+                matches = re.findall(tag_pattern, content, re.IGNORECASE)
+                if matches:
+                    # Return the first match
+                    return matches[0]
+        
+        # Strategy 3: Look for content with similar words
+        target_words = target_normalized.lower().split()
+        if len(target_words) > 1:
+            for line in content_lines:
+                line_words = normalize_whitespace(line).lower().split()
+                # Check if most target words are in this line
+                matching_words = sum(1 for word in target_words if word in line_words)
+                if matching_words >= len(target_words) * 0.7:  # 70% match
+                    return line.strip()
+        
+        return None
     
     def validate_changes(self, file_path: str) -> Dict[str, Any]:
         """Validate file after changes"""

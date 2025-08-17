@@ -397,14 +397,140 @@ class TaskExecutor:
         
         # Create basic instructions based on task type
         if "dark mode" in task.description.lower():
-            # Dark mode specific fallback
-            return {
-                "file_operations": [
-                    {
-                        "file_path": "index.html",
-                        "operation_type": "insert",
-                        "target_content": "</head>",
-                        "new_content": """
+            # Check if this is a repair request or initial implementation
+            if "check" in task.description.lower() or "fix" in task.description.lower() or "repair" in task.description.lower():
+                # This is a repair/fix request - create comprehensive repair instructions
+                return {
+                    "file_operations": [
+                        {
+                            "file_path": "index.html",
+                            "operation_type": "replace",
+                            "target_content": "<!DOCTYPE html>",
+                            "new_content": """<!DOCTYPE html>
+<html lang="de-de">
+<head>
+    <meta charset="utf-8"/>
+    <title>Generic Site Title</title>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <meta content="This is meta description" name="description"/>
+    <meta content="Themefisher" name="author"/>
+    <meta content="Hugo 0.68.3" name="generator"/>
+    
+    <!-- plugins -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+    <link href="./plugins/magnific-popup/magnific-popup.css" rel="stylesheet"/>
+    <link href="./plugins/slick/slick.css" rel="stylesheet"/>
+    <link href="./scss/style.min.css" media="screen" rel="stylesheet"/>
+    <link href="./images/favicon.png" rel="shortcut icon" type="image/x-icon"/>
+    <link href="./images/favicon.png" rel="icon" type="image/x-icon"/>
+    
+    <!-- Dark Mode Styles -->
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --nav-bg: #f8f9fa;
+            --card-bg: #ffffff;
+        }
+        
+        body.dark-mode {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --nav-bg: #1e1e1e;
+            --card-bg: #2d2d2d;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        .navbar {
+            background-color: var(--nav-bg) !important;
+        }
+        
+        .dark-mode .navbar-light .navbar-nav .nav-link {
+            color: var(--text-color) !important;
+        }
+        
+        .dark-mode .card {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+        
+        .dark-mode-toggle {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            z-index: 1000;
+            padding: 12px 16px;
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .dark-mode-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .dark-mode-toggle.active {
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+        }
+    </style>
+    
+    <!-- Dark Mode Script -->
+    <script>
+        function toggleDarkMode() {
+            const body = document.body;
+            const button = document.querySelector('.dark-mode-toggle');
+            
+            body.classList.toggle('dark-mode');
+            button.classList.toggle('active');
+            
+            const isDarkMode = body.classList.contains('dark-mode');
+            localStorage.setItem('darkMode', isDarkMode);
+            
+            // Update button text
+            button.textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+            const button = document.querySelector('.dark-mode-toggle');
+            
+            if (savedDarkMode) {
+                document.body.classList.add('dark-mode');
+                button.classList.add('active');
+                button.textContent = '☀️ Light Mode';
+            } else {
+                button.textContent = '🌙 Dark Mode';
+            }
+        });
+    </script>
+</head>
+<body>
+    <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>""",
+                            "explanation": "Repair and improve the dark mode implementation with clean HTML structure"
+                        }
+                    ]
+                }
+            else:
+                # Initial dark mode implementation
+                return {
+                    "file_operations": [
+                        {
+                            "file_path": "index.html",
+                            "operation_type": "insert",
+                            "target_content": "</head>",
+                            "new_content": """
     <style>
         .dark-mode {
             background-color: #121212;
@@ -434,17 +560,17 @@ class TaskExecutor:
         });
     </script>
 </head>""",
-                        "explanation": "Add dark mode styles and toggle functionality"
-                    },
-                    {
-                        "file_path": "index.html", 
-                        "operation_type": "insert",
-                        "target_content": "<body",
-                        "new_content": '<body><button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>',
-                        "explanation": "Add dark mode toggle button"
-                    }
-                ]
-            }
+                            "explanation": "Add dark mode styles and toggle functionality"
+                        },
+                        {
+                            "file_path": "index.html", 
+                            "operation_type": "insert",
+                            "target_content": "<body",
+                            "new_content": '<body><button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>',
+                            "explanation": "Add dark mode toggle button"
+                        }
+                    ]
+                }
         else:
             # Generic fallback
             files_to_modify = task.files_affected if task.files_affected else ["index.html"]
