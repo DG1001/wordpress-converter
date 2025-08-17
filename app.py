@@ -421,14 +421,42 @@ def api_edit_site(site_path):
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             return jsonify({'error': f'Failed to initialize git repository: {e}'}), 500
 
-    # 2. Read files
+    # 2. Read files (limit content to avoid token limits)
     files_content = {}
+    MAX_FILE_SIZE = 5000   # Limit each file to ~5k characters
+    MAX_TOTAL_SIZE = 20000  # Limit total content to ~20k characters
+    total_size = 0
+    
+    # Prioritize index.html and main CSS files
+    priority_files = []
+    other_files = []
+    
     for root, dirs, files in os.walk(full_path):
         for file in files:
             if file.endswith(('.html', '.css')):
                 file_path = os.path.join(root, file)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    files_content[file_path] = f.read()
+                if file == 'index.html' or 'main' in file.lower() or 'style' in file.lower():
+                    priority_files.append(file_path)
+                else:
+                    other_files.append(file_path)
+    
+    # Process priority files first
+    for file_path in priority_files + other_files:
+        if total_size >= MAX_TOTAL_SIZE:
+            break
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Truncate if too large
+                if len(content) > MAX_FILE_SIZE:
+                    content = content[:MAX_FILE_SIZE] + "\n... [content truncated]"
+                
+                files_content[file_path] = content
+                total_size += len(content)
+        except UnicodeDecodeError:
+            # Skip binary files
+            continue
 
     # 3. Call DeepSeek LLM
     try:
@@ -451,9 +479,11 @@ def api_edit_site(site_path):
                 relative_path = os.path.relpath(file_path, full_path)
                 llm_prompt += f"--- {relative_path} ---\n{content}\n\n"
 
-            llm_prompt += "Please provide the new content for each file that needs to be changed. "
-            llm_prompt += "Format your response as a JSON object where the keys are the file paths and the values are the new file contents. "
-            llm_prompt += "Only include files that have been changed."
+            llm_prompt += "IMPORTANT: You must respond with ONLY a valid JSON object. No other text before or after.\n"
+            llm_prompt += "The JSON should have file paths as keys and the new file contents as values.\n"
+            llm_prompt += "Only include files that need to be changed.\n"
+            llm_prompt += "Example format: {\"index.html\": \"<html>new content</html>\", \"style.css\": \"body { background: blue; }\"}\n"
+            llm_prompt += "If no changes are needed, return an empty object: {}"
 
             data = {
                 "model": "deepseek-chat",
@@ -462,23 +492,84 @@ def api_edit_site(site_path):
                     {"role": "user", "content": llm_prompt},
                 ],
                 "temperature": 0.7,
-                "max_tokens": 4096,
+                "max_tokens": 8192,
             }
 
-            response = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=data)
+            response = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=data)
+            
+            # Add debug logging
+            if response.status_code != 200:
+                print(f"DeepSeek API Error: {response.status_code}")
+                print(f"Response: {response.text}")
+                return jsonify({'error': f'DeepSeek API Error: {response.status_code} - {response.text}'}), 500
+                
             response.raise_for_status()
 
             llm_response = response.json()
             if 'choices' in llm_response and llm_response['choices']:
-                content_to_update = llm_response['choices'][0]['message']['content']
+                content_to_update = llm_response['choices'][0]['message']['content'].strip()
+                
+                # Try to extract JSON if it's wrapped in code blocks
+                if content_to_update.startswith('```'):
+                    lines = content_to_update.split('\n')
+                    json_lines = []
+                    in_json = False
+                    for line in lines:
+                        if line.startswith('```') and not in_json:
+                            in_json = True
+                            continue
+                        elif line.startswith('```') and in_json:
+                            break
+                        elif in_json:
+                            json_lines.append(line)
+                    content_to_update = '\n'.join(json_lines)
+                
                 try:
                     updated_files = json.loads(content_to_update)
+                    if not isinstance(updated_files, dict):
+                        return jsonify({'error': 'LLM response is not a JSON object.'}), 500
+                        
                     for file_path, new_content in updated_files.items():
                         full_file_path = os.path.join(full_path, file_path)
                         if os.path.exists(full_file_path):
                              files_content[full_file_path] = new_content
-                except json.JSONDecodeError:
-                    return jsonify({'error': 'Failed to decode LLM response as JSON.'}), 500
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {e}")
+                    print(f"LLM response length: {len(content_to_update)}")
+                    print(f"LLM response: {content_to_update}")
+                    
+                    # Try to fix common JSON issues
+                    fixed_content = content_to_update
+                    
+                    # If response appears truncated, try to close the JSON
+                    if not fixed_content.rstrip().endswith('}'):
+                        # Count open braces vs close braces
+                        open_braces = fixed_content.count('{')
+                        close_braces = fixed_content.count('}')
+                        
+                        # If we're missing closing braces, add them
+                        if open_braces > close_braces:
+                            # Find the last complete string and truncate there
+                            last_quote_pos = fixed_content.rfind('",')
+                            if last_quote_pos > 0:
+                                fixed_content = fixed_content[:last_quote_pos + 1]
+                            
+                            # Add missing closing braces
+                            for _ in range(open_braces - close_braces):
+                                fixed_content += '}'
+                    
+                    try:
+                        updated_files = json.loads(fixed_content)
+                        print("Successfully fixed JSON!")
+                        if not isinstance(updated_files, dict):
+                            return jsonify({'error': 'LLM response is not a JSON object.'}), 500
+                            
+                        for file_path, new_content in updated_files.items():
+                            full_file_path = os.path.join(full_path, file_path)
+                            if os.path.exists(full_file_path):
+                                 files_content[full_file_path] = new_content
+                    except json.JSONDecodeError:
+                        return jsonify({'error': f'Failed to decode LLM response as JSON: {str(e)}. Response may be truncated.'}), 500
 
     except requests.exceptions.RequestException as e:
         return jsonify({'error': f'Failed to call LLM: {e}'}), 500
