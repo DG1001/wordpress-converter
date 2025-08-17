@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit with AI - WordPress Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-800">
+                    🤖 Edit with AI
+                </h1>
+                <a href="/preview" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200">
+                    Back to Preview
+                </a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Left Column: Prompt and History -->
+                <div class="md:col-span-1 space-y-8">
+                    <!-- Prompt Section -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-xl font-semibold mb-4 text-gray-700">Your Instructions</h2>
+                        <form id="edit-form">
+                            <textarea id="prompt" name="prompt" rows="10" class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 'Change the background color of the header to dark blue.'"></textarea>
+                            <button type="submit" id="submit-button" class="w-full bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition duration-200 mt-4 font-semibold">
+                                Generate Changes
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- History Section -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-xl font-semibold mb-4 text-gray-700">Change History</h2>
+                        <div id="history-container" class="space-y-4 max-h-96 overflow-y-auto">
+                            <!-- History will be loaded here dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: File Browser -->
+                <div class="md:col-span-2">
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-2xl font-semibold mb-4 text-gray-700">File Browser</h2>
+                        <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600">
+                                <strong>Editing:</strong> {{ site_path }}
+                            </div>
+                        </div>
+                        <div id="file-browser-container" class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto" style="max-height: 600px;">
+                            <div class="font-mono text-sm">
+                                <!-- File browser content will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sitePath = '{{ site_path }}';
+            const editForm = document.getElementById('edit-form');
+            const submitButton = document.getElementById('submit-button');
+            const historyContainer = document.getElementById('history-container');
+            const fileBrowserContainer = document.getElementById('file-browser-container').querySelector('.font-mono');
+
+            // Fetch and display file browser
+            function loadFileBrowser() {
+                fetch(`/api/files/${sitePath}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        fileBrowserContainer.innerHTML = '';
+                        data.files.forEach(file => {
+                            const fileElement = document.createElement('div');
+                            fileElement.className = 'py-1 hover:bg-gray-800 px-2 rounded';
+                            if (file.is_dir) {
+                                fileElement.innerHTML = `<span class="text-blue-400">${file.indent}📁 ${file.name}</span>`;
+                            } else {
+                                fileElement.innerHTML = `<span class="text-gray-300">${file.indent}📄 ${file.name} <span class="text-gray-500 ml-2">(${(file.size / 1024).toFixed(1)} KB)</span></span>`;
+                            }
+                            fileBrowserContainer.appendChild(fileElement);
+                        });
+                    });
+            }
+
+            // Fetch and display history
+            function loadHistory() {
+                fetch(`/api/history/${sitePath}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        historyContainer.innerHTML = '';
+                        if (data.history.length === 0) {
+                            historyContainer.innerHTML = '<p class="text-gray-500">No changes yet.</p>';
+                            return;
+                        }
+                        data.history.forEach(commit => {
+                            const commitElement = document.createElement('div');
+                            commitElement.className = 'p-3 bg-gray-50 rounded-lg border border-gray-200';
+                            commitElement.innerHTML = `
+                                <p class="font-semibold text-sm text-gray-800">${commit.message}</p>
+                                <p class="text-xs text-gray-500 mt-1">${commit.hash} - ${commit.date}</p>
+                            `;
+                            historyContainer.appendChild(commitElement);
+                        });
+                    });
+            }
+
+            // Handle form submission
+            editForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                const prompt = document.getElementById('prompt').value;
+                if (!prompt) {
+                    alert('Please enter a prompt.');
+                    return;
+                }
+
+                submitButton.disabled = true;
+                submitButton.textContent = 'Generating...';
+
+                fetch(`/api/edit/${sitePath}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ prompt: prompt })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error: ' + data.error);
+                    } else {
+                        alert('Changes generated successfully!');
+                        document.getElementById('prompt').value = '';
+                        loadHistory();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An unexpected error occurred.');
+                })
+                .finally(() => {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Generate Changes';
+                });
+            });
+
+            // Initial load
+            loadFileBrowser();
+            loadHistory();
+        });
+    </script>
+</body>
+</html>

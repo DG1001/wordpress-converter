@@ -4,11 +4,14 @@ import os
 import shutil
 import zipfile
 import threading
+import subprocess
+import subprocess
 from datetime import datetime
 from urllib.parse import urlparse
 from scraper import WordPressScraper
 import json
 import mimetypes
+import requests
 from database import get_db, Project, ScrapingSession, ScrapingLog
 from screenshot_service import generate_project_screenshot_sync, generate_local_project_screenshot_sync, screenshot_service
 
@@ -392,6 +395,249 @@ def regenerate_screenshot(project_id):
     except Exception as e:
         return jsonify({'error': f'Failed to regenerate screenshot: {str(e)}'}), 500
 
+@app.route('/api/edit/<path:site_path>', methods=['POST'])
+def api_edit_site(site_path):
+    """API endpoint to handle AI-powered edits"""
+    full_path = os.path.join('scraped_sites', site_path)
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        return jsonify({'error': 'Site not found'}), 404
+
+    data = request.get_json()
+    prompt = data.get('prompt')
+
+    if not prompt:
+        return jsonify({'error': 'Prompt is required'}), 400
+
+    # 1. Initialize git repo if not exists
+    git_path = os.path.join(full_path, '.git')
+    if not os.path.exists(git_path):
+        try:
+            # Run 'git init'
+            subprocess.run(['git', 'init'], cwd=full_path, check=True)
+            # Run 'git add .'
+            subprocess.run(['git', 'add', '.'], cwd=full_path, check=True)
+            # Run 'git commit'
+            subprocess.run(['git', 'commit', '-m', 'Initial commit'], cwd=full_path, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            return jsonify({'error': f'Failed to initialize git repository: {e}'}), 500
+
+    # 2. Read files (limit content to avoid token limits)
+    files_content = {}
+    MAX_FILE_SIZE = 5000   # Limit each file to ~5k characters
+    MAX_TOTAL_SIZE = 20000  # Limit total content to ~20k characters
+    total_size = 0
+    
+    # Prioritize index.html and main CSS files
+    priority_files = []
+    other_files = []
+    
+    for root, dirs, files in os.walk(full_path):
+        for file in files:
+            if file.endswith(('.html', '.css')):
+                file_path = os.path.join(root, file)
+                if file == 'index.html' or 'main' in file.lower() or 'style' in file.lower():
+                    priority_files.append(file_path)
+                else:
+                    other_files.append(file_path)
+    
+    # Process priority files first
+    for file_path in priority_files + other_files:
+        if total_size >= MAX_TOTAL_SIZE:
+            break
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Truncate if too large
+                if len(content) > MAX_FILE_SIZE:
+                    content = content[:MAX_FILE_SIZE] + "\n... [content truncated]"
+                
+                files_content[file_path] = content
+                total_size += len(content)
+        except UnicodeDecodeError:
+            # Skip binary files
+            continue
+
+    # 3. Call DeepSeek LLM
+    try:
+        api_key = os.environ.get("DEEPSEEK_API_KEY", "YOUR_DEEPSEEK_API_KEY")
+        if api_key == "YOUR_DEEPSEEK_API_KEY":
+            # Return a simulation if the API key is not set
+            index_html_path = os.path.join(full_path, 'index.html')
+            if index_html_path in files_content:
+                files_content[index_html_path] += f'<!-- AI-generated change based on prompt: {prompt} -->'
+        else:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+
+            # Construct the prompt for the LLM
+            llm_prompt = f"The user wants to modify a static website. Their instruction is: '{prompt}'.\n\n"
+            llm_prompt += "Here are the contents of the relevant files:\n\n"
+            for file_path, content in files_content.items():
+                relative_path = os.path.relpath(file_path, full_path)
+                llm_prompt += f"--- {relative_path} ---\n{content}\n\n"
+
+            llm_prompt += "IMPORTANT: You must respond with ONLY a valid JSON object. No other text before or after.\n"
+            llm_prompt += "The JSON should have file paths as keys and the new file contents as values.\n"
+            llm_prompt += "Only include files that need to be changed.\n"
+            llm_prompt += "Example format: {\"index.html\": \"<html>new content</html>\", \"style.css\": \"body { background: blue; }\"}\n"
+            llm_prompt += "If no changes are needed, return an empty object: {}"
+
+            data = {
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful AI assistant that modifies website code."},
+                    {"role": "user", "content": llm_prompt},
+                ],
+                "temperature": 0.7,
+                "max_tokens": 8192,
+            }
+
+            response = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=data)
+            
+            # Add debug logging
+            if response.status_code != 200:
+                print(f"DeepSeek API Error: {response.status_code}")
+                print(f"Response: {response.text}")
+                return jsonify({'error': f'DeepSeek API Error: {response.status_code} - {response.text}'}), 500
+                
+            response.raise_for_status()
+
+            llm_response = response.json()
+            if 'choices' in llm_response and llm_response['choices']:
+                content_to_update = llm_response['choices'][0]['message']['content'].strip()
+                
+                # Try to extract JSON if it's wrapped in code blocks
+                if content_to_update.startswith('```'):
+                    lines = content_to_update.split('\n')
+                    json_lines = []
+                    in_json = False
+                    for line in lines:
+                        if line.startswith('```') and not in_json:
+                            in_json = True
+                            continue
+                        elif line.startswith('```') and in_json:
+                            break
+                        elif in_json:
+                            json_lines.append(line)
+                    content_to_update = '\n'.join(json_lines)
+                
+                try:
+                    updated_files = json.loads(content_to_update)
+                    if not isinstance(updated_files, dict):
+                        return jsonify({'error': 'LLM response is not a JSON object.'}), 500
+                        
+                    for file_path, new_content in updated_files.items():
+                        full_file_path = os.path.join(full_path, file_path)
+                        if os.path.exists(full_file_path):
+                             files_content[full_file_path] = new_content
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {e}")
+                    print(f"LLM response length: {len(content_to_update)}")
+                    print(f"LLM response: {content_to_update}")
+                    
+                    # Try to fix common JSON issues
+                    fixed_content = content_to_update
+                    
+                    # If response appears truncated, try to close the JSON
+                    if not fixed_content.rstrip().endswith('}'):
+                        # Count open braces vs close braces
+                        open_braces = fixed_content.count('{')
+                        close_braces = fixed_content.count('}')
+                        
+                        # If we're missing closing braces, add them
+                        if open_braces > close_braces:
+                            # Find the last complete string and truncate there
+                            last_quote_pos = fixed_content.rfind('",')
+                            if last_quote_pos > 0:
+                                fixed_content = fixed_content[:last_quote_pos + 1]
+                            
+                            # Add missing closing braces
+                            for _ in range(open_braces - close_braces):
+                                fixed_content += '}'
+                    
+                    try:
+                        updated_files = json.loads(fixed_content)
+                        print("Successfully fixed JSON!")
+                        if not isinstance(updated_files, dict):
+                            return jsonify({'error': 'LLM response is not a JSON object.'}), 500
+                            
+                        for file_path, new_content in updated_files.items():
+                            full_file_path = os.path.join(full_path, file_path)
+                            if os.path.exists(full_file_path):
+                                 files_content[full_file_path] = new_content
+                    except json.JSONDecodeError:
+                        return jsonify({'error': f'Failed to decode LLM response as JSON: {str(e)}. Response may be truncated.'}), 500
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Failed to call LLM: {e}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'An unexpected error occurred: {e}'}), 500
+
+
+    # 4. Apply changes
+    for file_path, content in files_content.items():
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+    # 5. Commit changes
+    try:
+        subprocess.run(['git', 'add', '.'], cwd=full_path, check=True)
+        subprocess.run(['git', 'commit', '-m', prompt], cwd=full_path, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return jsonify({'error': f'Failed to commit changes: {e}'}), 500
+
+
+    return jsonify({'message': 'Changes generated successfully', 'prompt': prompt})
+
+@app.route('/api/history/<path:site_path>')
+def api_history(site_path):
+    """API endpoint to get the git commit history for a site"""
+    full_path = os.path.join('scraped_sites', site_path)
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        return jsonify({'error': 'Site not found'}), 404
+
+    git_path = os.path.join(full_path, '.git')
+    if not os.path.exists(git_path):
+        return jsonify({'history': []})
+
+    try:
+        # Get git log with a custom format
+        log_format = "%H|%an|%ar|%s"
+        result = subprocess.run(
+            ['git', 'log', f'--pretty=format:{log_format}'],
+            cwd=full_path,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        log_output = result.stdout.strip()
+
+        if not log_output:
+            return jsonify([])
+
+        commits = []
+        for line in log_output.split('\n'):
+            parts = line.split('|')
+            if len(parts) == 4:
+                commit = {
+                    'hash': parts[0],
+                    'author': parts[1],
+                    'date': parts[2],
+                    'message': parts[3]
+                }
+                commits.append(commit)
+
+        return jsonify(commits)
+
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return jsonify({'error': f'Failed to get git history: {e}'}), 500
+
+
+
 @app.route('/preview')
 def preview_index():
     """Show available scraped sites for preview"""
@@ -487,6 +733,54 @@ def preview_directory_listing(site_path):
                          path=site_path, 
                          items=items,
                          parent_url=f"/preview/{'/'.join(site_path.split('/')[:-1])}" if '/' in site_path else '/preview')
+
+@app.route('/edit/<path:site_path>')
+def edit_site(site_path):
+    """Show the AI editing interface for a scraped site"""
+    full_path = os.path.join('scraped_sites', site_path)
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        abort(404)
+
+    return render_template('edit.html', site_path=site_path)
+
+
+
+@app.route('/api/files/<path:site_path>')
+def api_files(site_path):
+    """API endpoint to get the file list for a site"""
+    full_path = os.path.join('scraped_sites', site_path)
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        return jsonify({'error': 'Site not found'}), 404
+
+    files = []
+    for root, dirs, filenames in os.walk(full_path):
+        # Exclude the .git directory
+        if '.git' in dirs:
+            dirs.remove('.git')
+
+        level = root.replace(full_path, '').count(os.sep)
+        indent = ' ' * 2 * level
+
+        # Add directory
+        files.append({
+            'name': os.path.basename(root) + '/',
+            'path': root.replace(full_path, ''),
+            'is_dir': True,
+            'indent': indent
+        })
+
+        subindent = ' ' * 2 * (level + 1)
+        for filename in filenames:
+            file_path = os.path.join(root, filename)
+            files.append({
+                'name': filename,
+                'path': file_path.replace(full_path, ''),
+                'is_dir': False,
+                'size': os.path.getsize(file_path),
+                'indent': subindent
+            })
+
+    return jsonify({'files': files})
 
 @socketio.on('connect')
 def handle_connect():
