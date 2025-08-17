@@ -674,9 +674,10 @@ class AgenticEngine:
         if not self.memory:
             raise ValueError(f"No memory found for site ID: {site_id}")
         
-        # Initialize LLM manager
+        # Initialize LLM manager with active provider
         provider_configs = self.config.config['providers']
-        self.llm_manager = LLMManager(provider_configs)
+        active_provider = self.config.get_active_provider()
+        self.llm_manager = LLMManager(provider_configs, active_provider)
         
         # Initialize other components
         self.smart_editor = SmartEditor(site_id, self.memory_manager)

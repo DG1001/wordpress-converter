@@ -110,22 +110,22 @@ class AIChatInterface {
     }
 
     async loadAvailableSites() {
-        // For now, hardcode the available sites until server restart
-        // This will work with the current scraped sites
-        const sites = [
-            {
-                path: 'example-site1.com/timestamp1',
-                display_name: 'example-site1.com (timestamp1)'
-            },
-            {
-                path: 'example-site2.com/timestamp2', 
-                display_name: 'example-site2.com (timestamp2)'
-            },
-            {
-                path: 'example-site3.com/timestamp3',
-                display_name: 'example-site3.com (timestamp3)'
+        let sites = [];
+        
+        try {
+            // Load sites dynamically from the API
+            const response = await fetch('/ai/sites');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-        ];
+            
+            sites = await response.json();
+            console.log('Loaded sites from API:', sites);
+        } catch (error) {
+            console.error('Failed to load sites from API, using fallback:', error);
+            // Fallback to empty array if API fails - sites should be loaded dynamically
+            sites = [];
+        }
         
         this.siteSelector.innerHTML = '<option value="">Choose a converted site...</option>';
         

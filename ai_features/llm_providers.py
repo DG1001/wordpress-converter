@@ -383,27 +383,38 @@ class LLMProviderFactory:
 class LLMManager:
     """Manager for handling multiple LLM providers with fallbacks"""
     
-    def __init__(self, provider_configs: Dict[str, Dict]):
+    def __init__(self, provider_configs: Dict[str, Dict], active_provider: str = None):
         self.providers = {}
-        self.primary_provider = None
+        self.primary_provider = active_provider
         
         for provider_name, config in provider_configs.items():
             try:
                 provider = LLMProviderFactory.create_provider(provider_name, config)
                 self.providers[provider_name] = provider
-                if self.primary_provider is None:
-                    self.primary_provider = provider_name
                 logger.info(f"Initialized {provider_name} provider")
             except Exception as e:
                 logger.warning(f"Failed to initialize {provider_name} provider: {e}")
+        
+        # Set primary provider to active provider if it was successfully initialized
+        if self.primary_provider and self.primary_provider in self.providers:
+            logger.info(f"Using {self.primary_provider} as primary provider")
+        else:
+            # Fallback to first available provider
+            if self.providers:
+                self.primary_provider = next(iter(self.providers))
+                logger.info(f"Fallback to {self.primary_provider} as primary provider")
     
     def chat_completion(self, messages: List[Dict], provider_name: str = None, 
                        model_type: str = 'coding', **kwargs) -> LLMResponse:
         """Generate chat completion with fallback support"""
         providers_to_try = []
         
+        # Use specified provider first
         if provider_name and provider_name in self.providers:
             providers_to_try.append(provider_name)
+        # Otherwise, use primary provider first
+        elif self.primary_provider and self.primary_provider in self.providers:
+            providers_to_try.append(self.primary_provider)
         
         # Add other providers as fallbacks
         for name in self.providers:
