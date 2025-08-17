@@ -15,9 +15,25 @@ import requests
 from database import get_db, Project, ScrapingSession, ScrapingLog
 from screenshot_service import generate_project_screenshot_sync, generate_local_project_screenshot_sync, screenshot_service
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, environment should be set manually
+
+# Import AI routes
+from ai_routes import ai_bp, init_ai_socketio
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'wordpress-scraper-secret-key'
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Register AI blueprint
+app.register_blueprint(ai_bp)
+
+# Initialize AI SocketIO events
+init_ai_socketio(socketio)
 
 # Global variables for progress tracking
 scraping_progress = {

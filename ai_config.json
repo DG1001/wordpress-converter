@@ -1,0 +1,74 @@
+{
+  "providers": {
+    "openai": {
+      "api_key_env": "OPENAI_API_KEY",
+      "models": {
+        "planning": "gpt-4o-mini",
+        "coding": "gpt-4o",
+        "analysis": "gpt-4o-mini"
+      },
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 30
+    },
+    "anthropic": {
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "models": {
+        "planning": "claude-3-haiku-20240307",
+        "coding": "claude-3-sonnet-20240229",
+        "analysis": "claude-3-haiku-20240307"
+      },
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 30
+    },
+    "deepseek": {
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "base_url": "https://api.deepseek.com/v1",
+      "models": {
+        "planning": "deepseek-chat",
+        "coding": "deepseek-coder",
+        "analysis": "deepseek-chat"
+      },
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 30
+    },
+    "ollama": {
+      "base_url": "http://ci.infra:11434",
+      "models": {
+        "planning": "qwen3-coder:30b",
+        "coding": "qwen3-coder:30b",
+        "analysis": "qwen3-coder:30b"
+      },
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 60
+    }
+  },
+  "memory": {
+    "storage_path": "ai_features/data/memory",
+    "max_memory_size_mb": 100,
+    "cleanup_older_than_days": 30,
+    "auto_analyze_on_conversion": true,
+    "store_full_content": false,
+    "content_sample_size": 1000
+  },
+  "workflow": {
+    "max_todo_items": 50,
+    "auto_prioritize": true,
+    "require_user_approval": true,
+    "backup_before_changes": true,
+    "validate_changes": true,
+    "parallel_execution": false,
+    "max_file_size_kb": 500,
+    "excluded_file_types": [
+      ".jpg",
+      ".png",
+      ".gif",
+      ".pdf",
+      ".zip"
+    ]
+  },
+  "active_provider": "ollama"
+}
