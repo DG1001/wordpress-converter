@@ -311,7 +311,11 @@ class TaskAnalyzer:
         # Check in file structure or pages for CMS indicators
         page_content = ""
         for page_path, page_data in self.memory.pages.items():
-            page_content += str(page_data.get('content', ''))
+            # PageInfo objects don't have content, but we can check title and meta_description
+            if hasattr(page_data, 'title'):
+                page_content += str(page_data.title) + " "
+            if hasattr(page_data, 'meta_description'):
+                page_content += str(page_data.meta_description) + " "
         
         if any(indicator in page_content.lower() for indicator in [
             'joomla', 't3-', 'joomlart', 'mod_', 'com_content', 'view-article'
