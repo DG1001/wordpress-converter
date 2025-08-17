@@ -193,6 +193,9 @@ class TaskAnalyzer:
     def generate_tasks(self, user_request: str, analysis: Dict[str, Any]) -> List[TodoTask]:
         """Generate specific tasks based on analysis"""
         
+        # Detect CMS/Framework type for context
+        cms_type = self._detect_cms_type()
+        
         system_prompt = f"""
         You are an AI task planner for website editing. Generate specific, actionable tasks.
         
@@ -201,6 +204,9 @@ class TaskAnalyzer:
         - Components: {list(self.memory.components.keys())}
         - File structure: {list(self.memory.file_structure.get('directories', []))}
         - Technology: {self.memory.technology_stack}
+        - CMS/Framework: {cms_type}
+        
+        {self._get_cms_specific_guidelines(cms_type)}
         
         User Request: {user_request}
         Analysis: {json.dumps(analysis, indent=2)}
@@ -210,6 +216,7 @@ class TaskAnalyzer:
         2. Include the files that need to be modified
         3. Have clear dependencies
         4. Include the exact prompt for the LLM to execute the task
+        5. Work within the constraints of the detected CMS/framework
         
         Return tasks as JSON array with format:
         [
@@ -225,6 +232,7 @@ class TaskAnalyzer:
         ]
         
         Keep tasks granular and executable. Each task should be completable independently.
+        IMPORTANT: Only target specific, identifiable content. Do not use generic selectors like '<body>' or large structural elements.
         """
         
         messages = [
@@ -291,6 +299,89 @@ class TaskAnalyzer:
         tasks.append(task)
         
         return tasks
+    
+    def _detect_cms_type(self) -> str:
+        """Detect the CMS/Framework type from website memory"""
+        tech_stack = self.memory.technology_stack
+        
+        # Check for Joomla indicators
+        if any('joomla' in str(value).lower() for value in tech_stack.values()):
+            return "Joomla"
+        
+        # Check in file structure or pages for CMS indicators
+        page_content = ""
+        for page_path, page_data in self.memory.pages.items():
+            page_content += str(page_data.get('content', ''))
+        
+        if any(indicator in page_content.lower() for indicator in [
+            'joomla', 't3-', 'joomlart', 'mod_', 'com_content', 'view-article'
+        ]):
+            return "Joomla"
+        
+        if any(indicator in page_content.lower() for indicator in [
+            'wp-content', 'wordpress', 'wp-', 'wp_'
+        ]):
+            return "WordPress"
+        
+        if any(indicator in page_content.lower() for indicator in [
+            'drupal', 'sites/default', 'node/'
+        ]):
+            return "Drupal"
+        
+        # Check for framework indicators
+        if any(indicator in page_content.lower() for indicator in [
+            'bootstrap', 'bs-', 'col-lg-', 'navbar'
+        ]):
+            return "Bootstrap Framework"
+        
+        return "Static HTML"
+    
+    def _get_cms_specific_guidelines(self, cms_type: str) -> str:
+        """Get specific guidelines for the detected CMS"""
+        
+        if cms_type == "Joomla":
+            return """
+        JOOMLA-SPECIFIC GUIDELINES:
+        - This is a Joomla CMS site with T3 Framework
+        - Structure includes: t3-wrapper, t3-mainnav, t3-content, t3-footer classes
+        - Navigation uses: navbar, dropdown-menu structures
+        - Content is in: item-page, article-content sections
+        - Modules use: module, module-inner, module-ct classes
+        - DO NOT modify core Joomla structure (t3-wrapper, t3-mainnav, etc.)
+        - Target specific content within articles and modules only
+        - Links follow pattern: index.php/page-name.html
+        - Images are in ./images/ directory
+        - When fixing links, maintain Joomla URL structure
+        - Focus on content within existing containers, not structure
+        """
+        
+        elif cms_type == "WordPress":
+            return """
+        WORDPRESS-SPECIFIC GUIDELINES:
+        - This is a WordPress site
+        - Content is in post/page containers
+        - Navigation uses wp-nav-menu
+        - Target wp-content areas only
+        - Maintain WordPress post/page structure
+        """
+        
+        elif cms_type == "Bootstrap Framework":
+            return """
+        BOOTSTRAP-SPECIFIC GUIDELINES:
+        - Uses Bootstrap CSS framework
+        - Respect grid system (container, row, col-*)
+        - Use Bootstrap components and classes
+        - Maintain responsive structure
+        """
+        
+        else:
+            return """
+        STATIC HTML GUIDELINES:
+        - This appears to be a static HTML site
+        - Be careful with structural changes
+        - Target specific content elements
+        - Maintain existing layout structure
+        """
 
 
 class TaskExecutor:
@@ -345,6 +436,18 @@ class TaskExecutor:
         Files to modify: {task.files_affected}
         Task type: {task.task_type.value}
         
+        CRITICAL REQUIREMENTS:
+        1. Target content must be EXACT text from the actual file
+        2. Use specific, unique text snippets (20+ characters)
+        3. Include enough context to avoid ambiguity
+        4. DO NOT target structural elements like <body>, <html>, <div class="container">
+        5. Target only specific content within existing containers
+        6. Preserve original content structure and meaning
+        
+        For link fixes: Target the exact href attribute value
+        For image fixes: Target the exact src attribute value  
+        For content changes: Target specific text blocks, not HTML structure
+        
         Generate specific instructions for each file that needs to be modified.
         Return JSON format:
         {{
@@ -352,15 +455,22 @@ class TaskExecutor:
             {{
               "file_path": "path/to/file.html",
               "operation_type": "replace|insert|append|delete",
-              "target_content": "content to find/replace",
-              "new_content": "new content to insert",
+              "target_content": "exact text from file (must be 20+ chars)",
+              "new_content": "corrected content preserving context",
               "explanation": "why this change is needed"
             }}
           ]
         }}
         
-        Make sure the target_content is specific enough to uniquely identify the location.
-        Keep changes minimal and focused.
+        EXAMPLE of good target_content:
+        - 'href="../index.php/component/users/index.html"' (specific link)
+        - 'src="../images/broken_image.jpg"' (specific image)
+        - 'Tel. 07940 - 51262' (specific text content)
+        
+        EXAMPLE of bad target_content:
+        - '<body>' (too broad)
+        - '<div>' (not specific)
+        - 'Website Title' (generic)
         """
         
         messages = [
@@ -392,199 +502,24 @@ class TaskExecutor:
             return self._get_fallback_instructions(task)
     
     def _get_fallback_instructions(self, task: TodoTask) -> Dict[str, Any]:
-        """Generate fallback instructions when LLM fails"""
-        logger.info("Generating fallback instructions")
+        """Generate safe fallback instructions when LLM fails"""
+        logger.info("Generating safe fallback instructions")
         
-        # Create basic instructions based on task type
-        if "dark mode" in task.description.lower():
-            # Check if this is a repair request or initial implementation
-            if "check" in task.description.lower() or "fix" in task.description.lower() or "repair" in task.description.lower():
-                # This is a repair/fix request - create comprehensive repair instructions
-                return {
-                    "file_operations": [
-                        {
-                            "file_path": "index.html",
-                            "operation_type": "replace",
-                            "target_content": "<!DOCTYPE html>",
-                            "new_content": """<!DOCTYPE html>
-<html lang="de-de">
-<head>
-    <meta charset="utf-8"/>
-    <title>Generic Site Title</title>
-    <meta content="width=device-width, initial-scale=1" name="viewport"/>
-    <meta content="This is meta description" name="description"/>
-    <meta content="Themefisher" name="author"/>
-    <meta content="Hugo 0.68.3" name="generator"/>
-    
-    <!-- plugins -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
-    <link href="./plugins/magnific-popup/magnific-popup.css" rel="stylesheet"/>
-    <link href="./plugins/slick/slick.css" rel="stylesheet"/>
-    <link href="./scss/style.min.css" media="screen" rel="stylesheet"/>
-    <link href="./images/favicon.png" rel="shortcut icon" type="image/x-icon"/>
-    <link href="./images/favicon.png" rel="icon" type="image/x-icon"/>
-    
-    <!-- Dark Mode Styles -->
-    <style>
-        :root {
-            --bg-color: #ffffff;
-            --text-color: #333333;
-            --nav-bg: #f8f9fa;
-            --card-bg: #ffffff;
-        }
+        # For safety, return minimal or no operations when LLM fails
+        # This prevents destructive changes from generic fallback logic
         
-        body.dark-mode {
-            --bg-color: #121212;
-            --text-color: #e0e0e0;
-            --nav-bg: #1e1e1e;
-            --card-bg: #2d2d2d;
-        }
-        
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-        
-        .navbar {
-            background-color: var(--nav-bg) !important;
-        }
-        
-        .dark-mode .navbar-light .navbar-nav .nav-link {
-            color: var(--text-color) !important;
-        }
-        
-        .dark-mode .card {
-            background-color: var(--card-bg);
-            color: var(--text-color);
-        }
-        
-        .dark-mode-toggle {
-            position: fixed;
-            top: 100px;
-            right: 20px;
-            z-index: 1000;
-            padding: 12px 16px;
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 16px;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            transition: all 0.3s ease;
-        }
-        
-        .dark-mode-toggle:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-        
-        .dark-mode-toggle.active {
-            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
-        }
-    </style>
-    
-    <!-- Dark Mode Script -->
-    <script>
-        function toggleDarkMode() {
-            const body = document.body;
-            const button = document.querySelector('.dark-mode-toggle');
-            
-            body.classList.toggle('dark-mode');
-            button.classList.toggle('active');
-            
-            const isDarkMode = body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDarkMode);
-            
-            // Update button text
-            button.textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
-        }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-            const button = document.querySelector('.dark-mode-toggle');
-            
-            if (savedDarkMode) {
-                document.body.classList.add('dark-mode');
-                button.classList.add('active');
-                button.textContent = '☀️ Light Mode';
-            } else {
-                button.textContent = '🌙 Dark Mode';
-            }
-        });
-    </script>
-</head>
-<body>
-    <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>""",
-                            "explanation": "Repair and improve the dark mode implementation with clean HTML structure"
-                        }
-                    ]
+        logger.warning("LLM failed to generate proper instructions. Skipping task to prevent damage.")
+        return {
+            "file_operations": [
+                {
+                    "file_path": "SKIP_TASK.txt",
+                    "operation_type": "append", 
+                    "target_content": "",
+                    "new_content": f"# Skipped task: {task.description}\n# Reason: Could not generate safe instructions\n",
+                    "explanation": "Task skipped for safety - LLM failed to generate proper instructions"
                 }
-            else:
-                # Initial dark mode implementation
-                return {
-                    "file_operations": [
-                        {
-                            "file_path": "index.html",
-                            "operation_type": "insert",
-                            "target_content": "</head>",
-                            "new_content": """
-    <style>
-        .dark-mode {
-            background-color: #121212;
-            color: #ffffff;
+            ]
         }
-        .dark-mode-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-    </style>
-    <script>
-        function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            if (localStorage.getItem('darkMode') === 'true') {
-                document.body.classList.add('dark-mode');
-            }
-        });
-    </script>
-</head>""",
-                            "explanation": "Add dark mode styles and toggle functionality"
-                        },
-                        {
-                            "file_path": "index.html", 
-                            "operation_type": "insert",
-                            "target_content": "<body",
-                            "new_content": '<body><button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>',
-                            "explanation": "Add dark mode toggle button"
-                        }
-                    ]
-                }
-        else:
-            # Generic fallback
-            files_to_modify = task.files_affected if task.files_affected else ["index.html"]
-            return {
-                "file_operations": [
-                    {
-                        "file_path": files_to_modify[0],
-                        "operation_type": "insert",
-                        "target_content": "</head>",
-                        "new_content": f"<!-- {task.description} -->\n</head>",
-                        "explanation": f"Basic implementation of: {task.description}"
-                    }
-                ]
-            }
     
     def _extract_instructions_from_text(self, response_text: str, task: TodoTask) -> Dict[str, Any]:
         """Try to extract instructions from non-JSON response"""
@@ -622,12 +557,18 @@ class TaskExecutor:
         return self._get_fallback_instructions(task)
     
     def _execute_instructions(self, task: TodoTask, instructions: Dict[str, Any]) -> bool:
-        """Execute the file operations"""
+        """Execute the file operations with pre-validation"""
         file_operations = instructions.get('file_operations', [])
         
         if not file_operations:
             logger.warning("No file operations in instructions")
             return False
+        
+        # Pre-validate operations before executing
+        for operation in file_operations:
+            if not self._validate_operation(operation):
+                logger.error(f"Pre-validation failed for operation: {operation}")
+                return False
         
         results = []
         
@@ -656,6 +597,46 @@ class TaskExecutor:
             if not validation['valid']:
                 logger.error(f"Validation failed for {operation['file_path']}: {validation['issues']}")
                 # Could rollback here if needed
+        
+        return True
+    
+    def _validate_operation(self, operation: Dict[str, Any]) -> bool:
+        """Validate operation before execution"""
+        target_content = operation.get('target_content', '')
+        new_content = operation.get('new_content', '')
+        
+        # Block dangerous operations
+        dangerous_targets = [
+            '<!DOCTYPE html>', '<html', '<head', '<body',
+            '<div class="t3-wrapper', '<div class="container"',
+            '<header', '<footer', '<nav', '<main'
+        ]
+        
+        for dangerous in dangerous_targets:
+            if dangerous.lower() in target_content.lower():
+                logger.warning(f"Blocking dangerous operation on structural element: {target_content[:50]}...")
+                return False
+        
+        # Block operations that replace too much content
+        if len(target_content) > 500:
+            logger.warning(f"Blocking operation on large content block ({len(target_content)} chars)")
+            return False
+        
+        # Block operations with generic replacement content
+        generic_content_indicators = [
+            'Website Title', 'News Title', 'Event description',
+            'Welcome to our website', 'Logo', 'News Image'
+        ]
+        
+        for generic in generic_content_indicators:
+            if generic in new_content:
+                logger.warning(f"Blocking operation with generic content: {generic}")
+                return False
+        
+        # Validate that target content is reasonably specific
+        if len(target_content.strip()) < 10:
+            logger.warning(f"Target content too short/generic: {target_content}")
+            return False
         
         return True
 

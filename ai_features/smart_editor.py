@@ -503,8 +503,21 @@ class SmartEditor:
         )
     
     def _find_fuzzy_match(self, content: str, target: str) -> Optional[str]:
-        """Find fuzzy match for target content in HTML"""
+        """Find conservative fuzzy match for target content in HTML"""
         import re
+        
+        # Block dangerous structural elements from fuzzy matching
+        dangerous_elements = [
+            '<body>', '<html>', '<head>', '<div class="t3-wrapper',
+            '<div class="container">', '<section', '<main', '<header',
+            '<footer', '<nav', '<!DOCTYPE', '<meta', '<link', '<script'
+        ]
+        
+        # Don't allow fuzzy matching on large structural elements
+        for dangerous in dangerous_elements:
+            if dangerous.lower() in target.lower():
+                logger.warning(f"Refusing fuzzy match on structural element: {target[:50]}...")
+                return None
         
         # Normalize whitespace for comparison
         def normalize_whitespace(text):
@@ -512,36 +525,44 @@ class SmartEditor:
         
         target_normalized = normalize_whitespace(target)
         
-        # Strategy 1: Look for partial matches with normalized whitespace
+        # Only allow fuzzy matching for small, specific elements
+        if len(target) > 200:  # Don't fuzzy match large content blocks
+            return None
+        
+        # Strategy 1: Look for exact partial matches only (no word-based matching)
         content_lines = content.split('\n')
         for line in content_lines:
             line_normalized = normalize_whitespace(line)
-            if target_normalized in line_normalized:
-                return line.strip()
-        
-        # Strategy 2: Look for HTML tag patterns
-        if '<' in target and '>' in target:
-            # Extract tag name
-            tag_match = re.search(r'<(/?\w+)', target)
-            if tag_match:
-                tag_name = tag_match.group(1)
-                # Find similar tags in content
-                tag_pattern = rf'<{re.escape(tag_name)}[^>]*>'
-                matches = re.findall(tag_pattern, content, re.IGNORECASE)
-                if matches:
-                    # Return the first match
-                    return matches[0]
-        
-        # Strategy 3: Look for content with similar words
-        target_words = target_normalized.lower().split()
-        if len(target_words) > 1:
-            for line in content_lines:
-                line_words = normalize_whitespace(line).lower().split()
-                # Check if most target words are in this line
-                matching_words = sum(1 for word in target_words if word in line_words)
-                if matching_words >= len(target_words) * 0.7:  # 70% match
+            # Require significant overlap (at least 80% of target must be found)
+            if len(target_normalized) > 10 and target_normalized in line_normalized:
+                # Additional check: make sure the line isn't too different in length
+                if abs(len(line_normalized) - len(target_normalized)) < len(target_normalized) * 0.5:
                     return line.strip()
         
+        # Strategy 2: Very conservative HTML tag matching
+        if '<' in target and '>' in target and 'href=' in target:
+            # Only for links - find similar href patterns
+            href_match = re.search(r'href=["\']([^"\']+)["\']', target)
+            if href_match:
+                href_value = href_match.group(1)
+                # Look for same href in content
+                href_pattern = rf'href=["\'][^"\']*{re.escape(href_value)}[^"\']*["\']'
+                matches = re.findall(rf'<a[^>]*{href_pattern}[^>]*>[^<]*</a>', content, re.IGNORECASE)
+                if matches:
+                    return matches[0]
+        
+        # Strategy 3: Image src matching only
+        if '<img' in target and 'src=' in target:
+            src_match = re.search(r'src=["\']([^"\']+)["\']', target)
+            if src_match:
+                src_value = src_match.group(1)
+                # Look for similar image sources
+                img_pattern = rf'<img[^>]*src=["\'][^"\']*{re.escape(src_value.split("/")[-1])}[^"\']*["\'][^>]*>'
+                matches = re.findall(img_pattern, content, re.IGNORECASE)
+                if matches:
+                    return matches[0]
+        
+        # No safe fuzzy match found
         return None
     
     def validate_changes(self, file_path: str) -> Dict[str, Any]:
